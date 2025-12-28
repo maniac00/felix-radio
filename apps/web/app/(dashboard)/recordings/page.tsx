@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,18 +11,37 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { RecordingCard } from '@/components/recordings/recording-card';
-import { Search, Filter } from 'lucide-react';
-import { mockRecordings } from '@/lib/mock-data';
+import { Search, Filter, Loader2 } from 'lucide-react';
+import { apiClient } from '@/lib/api';
 import { Recording, RecordingStatus, STTStatus } from '@/lib/types';
 import { toast } from 'sonner';
 
 export default function RecordingsPage() {
-  const [recordings] = useState<Recording[]>(mockRecordings);
+  const [recordings, setRecordings] = useState<Recording[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<RecordingStatus | 'all'>('all');
   const [sttFilter, setSTTFilter] = useState<STTStatus | 'all'>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
+
+  // Load recordings on mount
+  useEffect(() => {
+    loadRecordings();
+  }, []);
+
+  const loadRecordings = async () => {
+    try {
+      setIsLoading(true);
+      const data = await apiClient.getRecordings();
+      setRecordings(data);
+    } catch (error) {
+      toast.error('녹음 목록을 불러오는데 실패했습니다');
+      console.error('Failed to load recordings:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Filter recordings
   const filteredRecordings = useMemo(() => {
@@ -134,9 +153,17 @@ export default function RecordingsPage() {
 
       {/* Recording List */}
       <div className="space-y-4">
-        {paginatedRecordings.length === 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-orange" />
+          </div>
+        ) : paginatedRecordings.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-500">검색 결과가 없습니다</p>
+            <p className="text-gray-500">
+              {filteredRecordings.length === 0 && recordings.length > 0
+                ? '검색 결과가 없습니다'
+                : '녹음된 파일이 없습니다'}
+            </p>
           </div>
         ) : (
           paginatedRecordings.map((recording) => (

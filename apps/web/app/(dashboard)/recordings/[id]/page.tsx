@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +15,8 @@ import {
   Check,
   Loader2,
 } from 'lucide-react';
-import { mockRecordings, mockSTTText } from '@/lib/mock-data';
+import { apiClient } from '@/lib/api';
+import { Recording } from '@/lib/types';
 import {
   formatDateTime,
   formatFileSize,
@@ -28,12 +29,46 @@ export default function RecordingDetailPage() {
   const router = useRouter();
   const recordingId = parseInt(params.id as string);
 
-  const recording = mockRecordings.find((r) => r.id === recordingId);
+  const [recording, setRecording] = useState<Recording | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [isConverting, setIsConverting] = useState(false);
-  const [sttText, setSTTText] = useState(
-    recording?.stt_status === 'completed' ? mockSTTText : ''
-  );
+  const [sttText, setSTTText] = useState('');
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    loadRecording();
+  }, [recordingId]);
+
+  const loadRecording = async () => {
+    try {
+      setIsLoading(true);
+      const data = await apiClient.getRecording(recordingId);
+      setRecording(data);
+
+      // Load STT text if already completed
+      if (data.stt_status === 'completed') {
+        try {
+          const text = await apiClient.getSTTResult(recordingId);
+          setSTTText(text);
+        } catch (error) {
+          console.error('Failed to load STT text:', error);
+        }
+      }
+    } catch (error) {
+      toast.error('녹음을 불러오는데 실패했습니다');
+      console.error('Failed to load recording:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-12 h-12 animate-spin text-orange" />
+      </div>
+    );
+  }
 
   if (!recording) {
     return (
@@ -50,18 +85,32 @@ export default function RecordingDetailPage() {
     );
   }
 
-  const handleConvertSTT = () => {
-    setIsConverting(true);
-    toast.info('STT 변환을 시작합니다 (모의)', {
-      description: '실제 환경에서는 Whisper API가 처리합니다',
-    });
+  const handleConvertSTT = async () => {
+    try {
+      setIsConverting(true);
+      toast.info('STT 변환을 시작합니다', {
+        description: 'Whisper API가 처리 중입니다',
+      });
 
-    // Simulate STT conversion
-    setTimeout(() => {
-      setSTTText(mockSTTText);
+      await apiClient.triggerSTT(recordingId);
+
+      // Poll for completion (in mock mode, this will complete after 3 seconds)
+      setTimeout(async () => {
+        try {
+          const text = await apiClient.getSTTResult(recordingId);
+          setSTTText(text);
+          setIsConverting(false);
+          toast.success('STT 변환이 완료되었습니다');
+        } catch (error) {
+          setIsConverting(false);
+          toast.error('STT 결과를 불러오는데 실패했습니다');
+        }
+      }, 3000);
+    } catch (error) {
       setIsConverting(false);
-      toast.success('STT 변환이 완료되었습니다');
-    }, 2000);
+      toast.error('STT 변환에 실패했습니다');
+      console.error('Failed to trigger STT:', error);
+    }
   };
 
   const handleCopyText = async () => {
@@ -75,10 +124,20 @@ export default function RecordingDetailPage() {
     }
   };
 
-  const handleDownload = () => {
-    toast.info(`${recording.program_name} 다운로드를 시작합니다 (모의)`, {
-      description: `파일: ${recording.audio_file_path}`,
-    });
+  const handleDownload = async () => {
+    try {
+      const url = await apiClient.getRecordingDownloadUrl(recordingId);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${recording.program_name}.mp3`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success('다운로드를 시작합니다');
+    } catch (error) {
+      toast.error('다운로드에 실패했습니다');
+      console.error('Failed to download recording:', error);
+    }
   };
 
   return (

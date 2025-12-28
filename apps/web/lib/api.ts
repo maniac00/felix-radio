@@ -1,0 +1,392 @@
+import {
+  Schedule,
+  Recording,
+  RadioStation,
+  ScheduleCreateRequest,
+  ScheduleUpdateRequest,
+  DashboardStats,
+} from './types';
+import {
+  mockSchedules,
+  mockRecordings,
+  mockStations,
+  mockDashboardStats,
+  mockSTTText,
+} from './mock-data';
+
+// Mock mode configuration - toggle between mock data and real API
+const USE_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK_API !== 'false';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
+
+class ApiClient {
+  private baseUrl: string;
+  private useMock: boolean;
+
+  constructor(baseUrl: string = API_BASE_URL, useMock: boolean = USE_MOCK_MODE) {
+    this.baseUrl = baseUrl;
+    this.useMock = useMock;
+  }
+
+  /**
+   * Get authentication token from Clerk
+   * Returns null in demo mode
+   */
+  private async getAuthToken(): Promise<string | null> {
+    if (this.useMock) return null;
+
+    // In production, get token from Clerk
+    // const { getToken } = useAuth();
+    // return await getToken();
+    return null;
+  }
+
+  /**
+   * Generic fetch wrapper with error handling
+   */
+  private async fetch<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    if (this.useMock) {
+      throw new Error('Mock mode enabled - use specific mock methods');
+    }
+
+    const token = await this.getAuthToken();
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+      ...options.headers,
+    };
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  // ==================== Schedule Methods ====================
+
+  /**
+   * Get all schedules for the current user
+   */
+  async getSchedules(): Promise<Schedule[]> {
+    if (this.useMock) {
+      // Simulate network delay
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return [...mockSchedules];
+    }
+
+    return this.fetch<Schedule[]>('/api/schedules');
+  }
+
+  /**
+   * Create a new schedule
+   */
+  async createSchedule(data: ScheduleCreateRequest): Promise<Schedule> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const newSchedule: Schedule = {
+        id: Math.max(...mockSchedules.map((s) => s.id), 0) + 1,
+        user_id: 'mock-user-id',
+        station_id: data.station_id,
+        station: mockStations.find((s) => s.id === data.station_id),
+        program_name: data.program_name,
+        days_of_week: data.days_of_week,
+        start_time: data.start_time,
+        duration_mins: data.duration_mins,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      mockSchedules.push(newSchedule);
+      return newSchedule;
+    }
+
+    return this.fetch<Schedule>('/api/schedules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Update an existing schedule
+   */
+  async updateSchedule(
+    id: number,
+    data: ScheduleUpdateRequest
+  ): Promise<Schedule> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const index = mockSchedules.findIndex((s) => s.id === id);
+      if (index === -1) {
+        throw new Error('Schedule not found');
+      }
+
+      mockSchedules[index] = {
+        ...mockSchedules[index],
+        ...data,
+        updated_at: new Date().toISOString(),
+      };
+
+      return mockSchedules[index];
+    }
+
+    return this.fetch<Schedule>(`/api/schedules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Delete a schedule
+   */
+  async deleteSchedule(id: number): Promise<void> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const index = mockSchedules.findIndex((s) => s.id === id);
+      if (index === -1) {
+        throw new Error('Schedule not found');
+      }
+
+      mockSchedules.splice(index, 1);
+      return;
+    }
+
+    await this.fetch<void>(`/api/schedules/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Toggle schedule active status
+   */
+  async toggleScheduleActive(id: number): Promise<Schedule> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const index = mockSchedules.findIndex((s) => s.id === id);
+      if (index === -1) {
+        throw new Error('Schedule not found');
+      }
+
+      mockSchedules[index] = {
+        ...mockSchedules[index],
+        is_active: !mockSchedules[index].is_active,
+        updated_at: new Date().toISOString(),
+      };
+
+      return mockSchedules[index];
+    }
+
+    return this.fetch<Schedule>(`/api/schedules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: undefined }), // Toggle on server
+    });
+  }
+
+  // ==================== Recording Methods ====================
+
+  /**
+   * Get all recordings with optional filters
+   */
+  async getRecordings(filters?: {
+    status?: string;
+    stt_status?: string;
+    search?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Recording[]> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      let filtered = [...mockRecordings];
+
+      if (filters?.status && filters.status !== 'all') {
+        filtered = filtered.filter((r) => r.status === filters.status);
+      }
+
+      if (filters?.stt_status && filters.stt_status !== 'all') {
+        filtered = filtered.filter((r) => r.stt_status === filters.stt_status);
+      }
+
+      if (filters?.search) {
+        const query = filters.search.toLowerCase();
+        filtered = filtered.filter((r) =>
+          r.program_name.toLowerCase().includes(query)
+        );
+      }
+
+      return filtered;
+    }
+
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.stt_status) params.append('stt_status', filters.stt_status);
+    if (filters?.search) params.append('search', filters.search);
+    if (filters?.limit) params.append('limit', filters.limit.toString());
+    if (filters?.offset) params.append('offset', filters.offset.toString());
+
+    return this.fetch<Recording[]>(`/api/recordings?${params.toString()}`);
+  }
+
+  /**
+   * Get a single recording by ID
+   */
+  async getRecording(id: number): Promise<Recording> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const recording = mockRecordings.find((r) => r.id === id);
+      if (!recording) {
+        throw new Error('Recording not found');
+      }
+
+      return recording;
+    }
+
+    return this.fetch<Recording>(`/api/recordings/${id}`);
+  }
+
+  /**
+   * Delete a recording
+   */
+  async deleteRecording(id: number): Promise<void> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+
+      const index = mockRecordings.findIndex((r) => r.id === id);
+      if (index === -1) {
+        throw new Error('Recording not found');
+      }
+
+      mockRecordings.splice(index, 1);
+      return;
+    }
+
+    await this.fetch<void>(`/api/recordings/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  /**
+   * Get download URL for a recording
+   */
+  async getRecordingDownloadUrl(id: number): Promise<string> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return '/mock-audio.mp3'; // Return mock audio file
+    }
+
+    const response = await this.fetch<{ url: string }>(
+      `/api/recordings/${id}/download`
+    );
+    return response.url;
+  }
+
+  // ==================== STT Methods ====================
+
+  /**
+   * Trigger STT conversion for a recording
+   */
+  async triggerSTT(recordingId: number): Promise<void> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      const index = mockRecordings.findIndex((r) => r.id === recordingId);
+      if (index === -1) {
+        throw new Error('Recording not found');
+      }
+
+      // Simulate STT processing
+      mockRecordings[index] = {
+        ...mockRecordings[index],
+        stt_status: 'processing',
+      };
+
+      // Simulate completion after delay
+      setTimeout(() => {
+        mockRecordings[index] = {
+          ...mockRecordings[index],
+          stt_status: 'completed',
+          stt_text_file_path: `users/mock-user/recordings/stt_${recordingId}.txt`,
+        };
+      }, 3000);
+
+      return;
+    }
+
+    await this.fetch<void>(`/api/recordings/${recordingId}/stt`, {
+      method: 'POST',
+    });
+  }
+
+  /**
+   * Get STT result for a recording
+   */
+  async getSTTResult(recordingId: number): Promise<string> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const recording = mockRecordings.find((r) => r.id === recordingId);
+      if (!recording) {
+        throw new Error('Recording not found');
+      }
+
+      if (recording.stt_status !== 'completed') {
+        throw new Error('STT not completed');
+      }
+
+      return mockSTTText;
+    }
+
+    const response = await this.fetch<{ text: string }>(
+      `/api/recordings/${recordingId}/stt`
+    );
+    return response.text;
+  }
+
+  // ==================== Station Methods ====================
+
+  /**
+   * Get all available radio stations
+   */
+  async getStations(): Promise<RadioStation[]> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      return [...mockStations];
+    }
+
+    return this.fetch<RadioStation[]>('/api/stations');
+  }
+
+  // ==================== Dashboard Methods ====================
+
+  /**
+   * Get dashboard statistics
+   */
+  async getDashboardStats(): Promise<DashboardStats> {
+    if (this.useMock) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return { ...mockDashboardStats };
+    }
+
+    return this.fetch<DashboardStats>('/api/dashboard/stats');
+  }
+}
+
+// Export singleton instance
+export const apiClient = new ApiClient();
+
+// Export class for testing
+export { ApiClient };

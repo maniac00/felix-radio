@@ -1,16 +1,44 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { StatsCard } from '@/components/shared/stats-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Radio, Calendar, HardDrive, Activity, Clock } from 'lucide-react';
-import { mockDashboardStats, mockRecordings, mockSchedules } from '@/lib/mock-data';
+import { Radio, Calendar, HardDrive, Activity, Clock, Loader2 } from 'lucide-react';
+import { apiClient } from '@/lib/api';
+import { DashboardStats, Recording, Schedule } from '@/lib/types';
 import { formatRelativeTime, formatFileSize, formatDaysOfWeek, parseDaysOfWeek } from '@/lib/utils';
+import { toast } from 'sonner';
 
 export default function DashboardPage() {
-  const stats = mockDashboardStats;
-  const recentRecordings = mockRecordings.slice(0, 5);
-  const activeSchedules = mockSchedules.filter(s => s.is_active);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentRecordings, setRecentRecordings] = useState<Recording[]>([]);
+  const [activeSchedules, setActiveSchedules] = useState<Schedule[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setIsLoading(true);
+      const [statsData, recordingsData, schedulesData] = await Promise.all([
+        apiClient.getDashboardStats(),
+        apiClient.getRecordings(),
+        apiClient.getSchedules(),
+      ]);
+
+      setStats(statsData);
+      setRecentRecordings(recordingsData.slice(0, 5));
+      setActiveSchedules(schedulesData.filter(s => s.is_active));
+    } catch (error) {
+      toast.error('대시보드 데이터를 불러오는데 실패했습니다');
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Calculate next scheduled recording
   const getNextSchedule = () => {
@@ -28,6 +56,22 @@ export default function DashboardPage() {
   };
 
   const nextSchedule = getNextSchedule();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-12 h-12 animate-spin text-orange" />
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-gray-500">대시보드 데이터를 불러올 수 없습니다</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
