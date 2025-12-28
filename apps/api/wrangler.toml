@@ -1,0 +1,28 @@
+name = "felix-radio-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-27"
+node_compat = true
+
+# Development server configuration
+[dev]
+port = 8787
+
+# D1 Database binding (will be created in Task 12.0)
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "felix-radio-db"
+# database_id = "TBD"
+
+# R2 Storage binding (will be configured in Task 13.0)
+# [[r2_buckets]]
+# binding = "R2"
+# bucket_name = "felix-radio-recordings"
+
+# Environment variables (secrets set via wrangler secret put)
+[vars]
+# CLERK_PUBLISHABLE_KEY will be set via wrangler secret
+# INTERNAL_API_KEY will be set via wrangler secret
+
+# CORS configuration for development
+[observability]
+enabled = true
