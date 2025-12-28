@@ -14,13 +14,17 @@ import {
   mockSTTText,
 } from './mock-data';
 
-// Mock mode configuration - toggle between mock data and real API
-const USE_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK_API !== 'false';
+// API configuration
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8787';
+
+// Check if we're using mock mode
+// Mock mode is enabled when NEXT_PUBLIC_USE_MOCK_API is explicitly set to 'true'
+const USE_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true';
 
 class ApiClient {
   private baseUrl: string;
   private useMock: boolean;
+  private getToken: (() => Promise<string | null>) | null = null;
 
   constructor(baseUrl: string = API_BASE_URL, useMock: boolean = USE_MOCK_MODE) {
     this.baseUrl = baseUrl;
@@ -28,16 +32,30 @@ class ApiClient {
   }
 
   /**
+   * Set the token getter function from Clerk's useAuth hook
+   * This should be called from a Client Component
+   */
+  setTokenGetter(getToken: () => Promise<string | null>) {
+    this.getToken = getToken;
+  }
+
+  /**
    * Get authentication token from Clerk
-   * Returns null in demo mode
    */
   private async getAuthToken(): Promise<string | null> {
     if (this.useMock) return null;
 
-    // In production, get token from Clerk
-    // const { getToken } = useAuth();
-    // return await getToken();
-    return null;
+    if (!this.getToken) {
+      console.warn('Token getter not set. Call apiClient.setTokenGetter() first.');
+      return null;
+    }
+
+    try {
+      return await this.getToken();
+    } catch (error) {
+      console.error('Failed to get auth token:', error);
+      return null;
+    }
   }
 
   /**
@@ -83,7 +101,8 @@ class ApiClient {
       return [...mockSchedules];
     }
 
-    return this.fetch<Schedule[]>('/api/schedules');
+    const response = await this.fetch<{ schedules: Schedule[]; total: number }>('/api/schedules');
+    return response.schedules;
   }
 
   /**
@@ -111,10 +130,17 @@ class ApiClient {
       return newSchedule;
     }
 
-    return this.fetch<Schedule>('/api/schedules', {
+    // Convert days_of_week array to JSON string for API
+    const apiData = {
+      ...data,
+      days_of_week: JSON.stringify(data.days_of_week),
+    };
+
+    const response = await this.fetch<{ message: string; schedule: Schedule }>('/api/schedules', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify(apiData),
     });
+    return response.schedule;
   }
 
   /**
@@ -141,10 +167,16 @@ class ApiClient {
       return mockSchedules[index];
     }
 
-    return this.fetch<Schedule>(`/api/schedules/${id}`, {
+    // Convert days_of_week array to JSON string if present
+    const apiData = data.days_of_week
+      ? { ...data, days_of_week: JSON.stringify(data.days_of_week) }
+      : data;
+
+    const response = await this.fetch<{ message: string; schedule: Schedule }>(`/api/schedules/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: JSON.stringify(apiData),
     });
+    return response.schedule;
   }
 
   /**
@@ -231,13 +263,11 @@ class ApiClient {
     }
 
     const params = new URLSearchParams();
-    if (filters?.status) params.append('status', filters.status);
-    if (filters?.stt_status) params.append('stt_status', filters.stt_status);
-    if (filters?.search) params.append('search', filters.search);
     if (filters?.limit) params.append('limit', filters.limit.toString());
     if (filters?.offset) params.append('offset', filters.offset.toString());
 
-    return this.fetch<Recording[]>(`/api/recordings?${params.toString()}`);
+    const response = await this.fetch<{ recordings: Recording[]; limit: number; offset: number; count: number }>(`/api/recordings?${params.toString()}`);
+    return response.recordings;
   }
 
   /**
@@ -255,7 +285,8 @@ class ApiClient {
       return recording;
     }
 
-    return this.fetch<Recording>(`/api/recordings/${id}`);
+    const response = await this.fetch<{ recording: Recording }>(`/api/recordings/${id}`);
+    return response.recording;
   }
 
   /**
@@ -288,10 +319,8 @@ class ApiClient {
       return '/mock-audio.mp3'; // Return mock audio file
     }
 
-    const response = await this.fetch<{ url: string }>(
-      `/api/recordings/${id}/download`
-    );
-    return response.url;
+    // Download endpoint returns the file directly, not JSON
+    return `${this.baseUrl}/api/recordings/${id}/download`;
   }
 
   // ==================== STT Methods ====================
@@ -350,9 +379,14 @@ class ApiClient {
       return mockSTTText;
     }
 
-    const response = await this.fetch<{ text: string }>(
+    const response = await this.fetch<{ stt_status: string; text?: string; message?: string }>(
       `/api/recordings/${recordingId}/stt`
     );
+
+    if (response.stt_status !== 'completed' || !response.text) {
+      throw new Error(response.message || 'STT not completed');
+    }
+
     return response.text;
   }
 
@@ -367,7 +401,8 @@ class ApiClient {
       return [...mockStations];
     }
 
-    return this.fetch<RadioStation[]>('/api/stations');
+    const response = await this.fetch<{ stations: RadioStation[]; total: number }>('/api/stations');
+    return response.stations;
   }
 
   // ==================== Dashboard Methods ====================
@@ -382,6 +417,13 @@ class ApiClient {
     }
 
     return this.fetch<DashboardStats>('/api/dashboard/stats');
+  }
+
+  /**
+   * Check if API client is in mock mode
+   */
+  isMockMode(): boolean {
+    return this.useMock;
   }
 }
 

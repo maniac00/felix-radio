@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 // import { ClerkProvider } from "@clerk/nextjs"; // Temporarily disabled for demo
+import { ApiAuthProvider } from "@/components/providers/api-auth-provider";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -30,7 +31,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        {children}
+        <ApiAuthProvider>
+          {children}
+        </ApiAuthProvider>
         <Toaster />
       </body>
     </html>
