@@ -2,9 +2,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { Bindings, Variables } from './types';
 import { clerkAuth } from './middleware/auth';
-import { apiKeyAuth } from './middleware/apiKey';
 import schedules from './routes/schedules';
 import recordings from './routes/recordings';
+import stations from './routes/stations';
+import dashboard from './routes/dashboard';
+import internal from './routes/internal';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
@@ -56,21 +58,9 @@ app.get('/api/auth/me', clerkAuth, (c) => {
 // API routes
 app.route('/api/schedules', schedules);
 app.route('/api/recordings', recordings);
-
-// Stations endpoint (will be implemented in Task 18.0)
-app.get('/api/stations', clerkAuth, (c) => {
-  return c.json({ message: 'Stations endpoint - to be implemented in Task 18.0' });
-});
-
-// Dashboard endpoint (will be implemented in Task 18.0)
-app.get('/api/dashboard/stats', clerkAuth, (c) => {
-  return c.json({ message: 'Dashboard endpoint - to be implemented in Task 18.0' });
-});
-
-// Internal API routes (require API key authentication)
-app.get('/api/internal/schedules/pending', apiKeyAuth, (c) => {
-  return c.json({ message: 'Internal API endpoint - to be implemented in Task 18.0' });
-});
+app.route('/api/stations', stations);
+app.route('/api/dashboard', dashboard);
+app.route('/api/internal', internal);
 
 // 404 handler
 app.notFound((c) => {
