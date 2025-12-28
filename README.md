@@ -149,6 +149,8 @@ R2_BUCKET_NAME=felix-radio-recordings
 - [API Specification](docs/API.md)
 - [Database Schema](docs/DATABASE.md)
 - [Setup Guide](docs/SETUP.md)
+- [**Production Deployment Guide**](docs/DEPLOYMENT.md) ⭐
+- [**Production Checklist**](docs/PRODUCTION_CHECKLIST.md) ⭐
 - [Legacy System Reference](docs/legacy.md)
 
 ## 🧪 Testing
@@ -165,28 +167,61 @@ cd packages/recorder && pnpm test
 
 ## 🚢 Deployment
 
-### Frontend (Cloudflare Pages)
+### Quick Deploy to Production
 
+```bash
+# Automated deployment script
+./scripts/deploy-production.sh
+```
+
+**See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for complete production deployment guide.**
+
+### Individual Services
+
+#### Frontend (Cloudflare Pages)
 ```bash
 cd apps/web
 pnpm build
-# Deploy via Cloudflare Pages dashboard or CLI
+# Deploy via Cloudflare Pages dashboard
 ```
 
-### API (Cloudflare Workers)
-
+#### API (Cloudflare Workers)
 ```bash
 cd apps/api
-wrangler deploy
+
+# Create D1 database
+wrangler d1 create felix-radio-db
+
+# Run migrations
+pnpm db:migrate:prod migrations/0001_initial_schema.sql
+
+# Set secrets
+wrangler secret put CLERK_SECRET_KEY
+wrangler secret put INTERNAL_API_KEY
+
+# Deploy
+pnpm deploy
 ```
 
-### Recorder (Vultr VPS)
-
+#### Recorder (Vultr VPS)
 ```bash
+# On VPS
 cd packages/recorder
-docker build -t felix-recorder .
-# Deploy to Vultr via docker-compose
+docker-compose up -d
 ```
+
+### Deployment Resources
+
+- 📖 [Step-by-step Deployment Guide](docs/DEPLOYMENT.md)
+- ✅ [Production Checklist](docs/PRODUCTION_CHECKLIST.md)
+- 🔧 [Environment Examples](apps/api/.env.production.example)
+
+### Cost Estimate
+
+- **Cloudflare**: ~$5-10/month (Workers + D1 + R2)
+- **Vultr VPS**: $6/month (1GB RAM, Seoul)
+- **OpenAI Whisper**: $0.006/minute of audio
+- **Total**: ~$15-20/month (excluding STT usage)
 
 ## 📝 License
 
