@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "pnpm --parallel run dev",
+    "dev:start": "./scripts/dev-start.sh",
+    "dev:stop": "./scripts/dev-stop.sh",
     "build": "pnpm --recursive run build",
     "test": "pnpm --recursive run test",
     "lint": "pnpm --recursive run lint",

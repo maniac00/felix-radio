@@ -72,14 +72,28 @@ pnpm dev
 ### Development
 
 ```bash
-# Start all services in parallel
+# Quick Start (Frontend only with demo mode)
+npm run dev:start           # Start development server
+npm run dev:stop            # Stop development server
+
+# Or use scripts directly
+./scripts/dev-start.sh      # Auto-configures demo environment
+./scripts/dev-stop.sh       # Cleanup all processes
+
+# Start all services in parallel (when backend is ready)
 pnpm dev
 
 # Start individual services
-cd apps/web && pnpm dev      # Frontend (http://localhost:3000)
-cd apps/api && pnpm dev      # API (http://localhost:8787)
+cd apps/web && npm run dev      # Frontend (http://localhost:3000)
+cd apps/api && pnpm dev         # API (http://localhost:8787)
 cd packages/recorder && pnpm dev  # Recording server
 ```
+
+**Demo Mode Features:**
+- ✅ Authentication disabled for quick testing
+- ✅ Mock data pre-loaded
+- ✅ All UI features functional
+- ✅ No Clerk or API setup required
 
 ## 📁 Project Structure
 
