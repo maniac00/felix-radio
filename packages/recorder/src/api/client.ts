@@ -38,7 +38,7 @@ export class WorkersAPIClient {
         throw new Error(`API request failed: ${response.status} ${error}`);
       }
 
-      return await response.json();
+      return (await response.json()) as T;
     } catch (error) {
       logger.error('API request failed', { url, error });
       throw error;
