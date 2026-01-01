@@ -14,24 +14,25 @@ fi
 # Parse command line arguments
 WITH_API=true  # Default to using real API
 SKIP_INSTALL=false
-WITH_TUNNEL=false
+WITH_TUNNEL=true  # Default to using tunnel
 for arg in "$@"; do
     case $arg in
         --mock)
             WITH_API=false
+            WITH_TUNNEL=false
             shift
             ;;
         --skip-install)
             SKIP_INSTALL=true
             shift
             ;;
-        --tunnel)
-            WITH_TUNNEL=true
+        --no-tunnel)
+            WITH_TUNNEL=false
             shift
             ;;
         *)
             echo "❌ Unknown argument: $arg"
-            echo "Usage: ./scripts/dev-start.sh [--mock] [--skip-install] [--tunnel]"
+            echo "Usage: ./scripts/dev-start.sh [--mock] [--skip-install] [--no-tunnel]"
             exit 1
             ;;
     esac
@@ -161,10 +162,36 @@ if [ "$WITH_TUNNEL" = true ]; then
             echo "   ✅ Tunnel is ready"
             echo "   🔗 Public URL: $TUNNEL_URL"
             echo ""
-            echo "   📋 Configure recorder server with this URL:"
-            echo "   ssh root@158.247.206.183"
-            echo "   export WORKERS_API_URL=$TUNNEL_URL"
-            echo "   cd felix-radio/packages/recorder && docker-compose restart"
+
+            # Automatically configure recorder server
+            echo "   🔧 Configuring recorder server..."
+            ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << 'EOFENV'
+# Workers API Configuration (using local tunnel)
+WORKERS_API_URL=$TUNNEL_URL
+INTERNAL_API_KEY=dev_api_key_12345
+
+# OpenAI Whisper API
+OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+
+# Cloudflare R2 Configuration
+R2_ACCOUNT_ID=ed20098766cafda6a8821fcc3be0ac43
+R2_ACCESS_KEY_ID=4972687ffcb2b717819580b75bffd463
+R2_SECRET_ACCESS_KEY=0452e5853a5c20bb833f2ae132ba9875731df49a970ffb2a1bc5fa11b425246f
+R2_BUCKET_NAME=felix-radio-recordings
+R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
+
+# Configuration
+TZ=Asia/Seoul
+LOG_LEVEL=info
+EOFENV
+" && echo "   ✅ Recorder .env updated"
+
+            echo "   🔄 Restarting recorder service..."
+            ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose down && docker-compose up -d --build" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted"
+
+            echo ""
+            echo "   📋 Recorder server configured automatically"
+            echo "   📊 Check recorder logs: ssh root@158.247.206.183 'cd felix-radio/packages/recorder && docker-compose logs --tail=20'"
             break
         fi
         if [ $i -eq 30 ]; then
@@ -235,6 +262,32 @@ cleanup() {
         kill $TUNNEL_PID 2>/dev/null
         rm /tmp/felix-tunnel.pid
         echo "   ✅ Tunnel stopped"
+
+        # Restore production configuration on recorder
+        echo ""
+        echo "   🔄 Restoring production configuration on recorder..."
+        ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << 'EOFENV'
+# Workers API Configuration
+WORKERS_API_URL=https://felix-radio-api.7wario.workers.dev
+INTERNAL_API_KEY=dev_api_key_12345
+
+# OpenAI Whisper API
+OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
+
+# Cloudflare R2 Configuration
+R2_ACCOUNT_ID=ed20098766cafda6a8821fcc3be0ac43
+R2_ACCESS_KEY_ID=4972687ffcb2b717819580b75bffd463
+R2_SECRET_ACCESS_KEY=0452e5853a5c20bb833f2ae132ba9875731df49a970ffb2a1bc5fa11b425246f
+R2_BUCKET_NAME=felix-radio-recordings
+R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
+
+# Configuration
+TZ=Asia/Seoul
+LOG_LEVEL=info
+EOFENV
+" > /dev/null 2>&1 && echo "   ✅ Production config restored"
+
+        ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose restart" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted with production config"
     fi
     exit 0
 }
