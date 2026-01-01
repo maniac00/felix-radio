@@ -1,36 +1,26 @@
 #!/bin/bash
+# Helper script to update recorder with current tunnel URL
 
-# Felix Radio - Tunnel Recorder Setup Script
-# This script configures the Vultr recorder server to use the local API via Cloudflare Tunnel
+TUNNEL_LOG="/tmp/felix-tunnel.log"
+MAX_WAIT=30
 
-echo "🌐 Felix Radio - Configure Recorder for Tunnel"
-echo "================================================"
+echo "🔧 Configuring recorder with tunnel URL..."
 
-# Check if tunnel URL is provided
-if [ -z "$1" ]; then
-    echo "❌ Error: Tunnel URL required"
-    echo "Usage: ./scripts/tunnel-setup-recorder.sh <tunnel-url>"
-    echo ""
-    echo "Example:"
-    echo "  ./scripts/tunnel-setup-recorder.sh https://abc-def-123.trycloudflare.com"
-    echo ""
-    echo "To get the tunnel URL:"
-    echo "  tail -f /tmp/felix-tunnel.log | grep https://"
-    exit 1
-fi
-
-TUNNEL_URL=$1
-
-echo "📋 Configuration:"
-echo "   Tunnel URL: $TUNNEL_URL"
-echo "   Server: root@158.247.206.183"
-echo ""
-echo "⏳ Updating recorder server configuration..."
-
-# Update .env file on recorder server
-ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << 'EOF'
-# Workers API Configuration (using local tunnel)
-WORKERS_API_URL=$TUNNEL_URL
+# Wait for tunnel URL to appear
+for i in $(seq 1 $MAX_WAIT); do
+    if [ -f "$TUNNEL_LOG" ] && grep -q "https://" "$TUNNEL_LOG"; then
+        TUNNEL_URL=$(grep -E -o 'https://[a-zA-Z0-9\-]+\.trycloudflare\.com' "$TUNNEL_LOG" | head -1)
+        
+        if [ -n "$TUNNEL_URL" ]; then
+            echo "   ✅ Found tunnel URL: $TUNNEL_URL"
+            
+            # Create .env file locally
+            cat > /tmp/felix-recorder.env << EOF
+# Workers API Configuration
+# Primary: Local tunnel (auto-detected, preferred)
+WORKERS_API_URL_PRIMARY=$TUNNEL_URL
+# Fallback: Production (always available)
+WORKERS_API_URL_FALLBACK=https://felix-radio-api.7wario.workers.dev
 INTERNAL_API_KEY=dev_api_key_12345
 
 # OpenAI Whisper API
@@ -47,23 +37,31 @@ R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
 TZ=Asia/Seoul
 LOG_LEVEL=info
 EOF
-"
+            
+            # Upload to recorder server
+            if scp -q /tmp/felix-recorder.env root@158.247.206.183:felix-radio/packages/recorder/.env; then
+                rm /tmp/felix-recorder.env
+                echo "   ✅ Recorder .env updated"
+                
+                # Restart recorder
+                echo "   🔄 Restarting recorder service..."
+                if ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose down && docker-compose up -d" > /dev/null 2>&1; then
+                    echo "   ✅ Recorder restarted with tunnel URL"
+                    exit 0
+                else
+                    echo "   ❌ Failed to restart recorder"
+                    exit 1
+                fi
+            else
+                echo "   ❌ Failed to upload .env file"
+                rm /tmp/felix-recorder.env
+                exit 1
+            fi
+        fi
+    fi
+    
+    sleep 1
+done
 
-echo "✅ Configuration updated"
-echo ""
-echo "🔄 Restarting recorder service..."
-
-# Restart recorder service
-ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose down && docker-compose up -d --build"
-
-echo ""
-echo "✅ Recorder server configured and restarted"
-echo ""
-echo "📋 To verify:"
-echo "   ssh root@158.247.206.183 'cd felix-radio/packages/recorder && docker-compose logs --tail=20'"
-echo ""
-echo "⚠️  Important:"
-echo "   - Keep your local server running (./scripts/dev-start.sh --tunnel)"
-echo "   - If you restart dev-start.sh, the tunnel URL will change"
-echo "   - Run this script again with the new tunnel URL"
-echo ""
+echo "   ⏰ Timeout waiting for tunnel URL"
+exit 1

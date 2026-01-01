@@ -154,67 +154,21 @@ if [ "$WITH_TUNNEL" = true ]; then
     TUNNEL_PID=$!
     echo $TUNNEL_PID > /tmp/felix-tunnel.pid
 
-    echo "   ⏳ Waiting for tunnel to be ready..."
-    # Wait for tunnel URL to appear in logs
-    for i in {1..30}; do
-        if grep -q "https://" /tmp/felix-tunnel.log 2>/dev/null; then
-            TUNNEL_URL=$(grep -oP 'https://[\w\-]+\.trycloudflare\.com' /tmp/felix-tunnel.log 2>/dev/null | head -1)
-            # Fallback to basic grep if -P is not available
-            if [ -z "$TUNNEL_URL" ]; then
-                TUNNEL_URL=$(grep -E -o 'https://[a-zA-Z0-9\-]+\.trycloudflare\.com' /tmp/felix-tunnel.log | head -1)
-            fi
-            echo "   ✅ Tunnel is ready"
-            echo "   🔗 Public URL: $TUNNEL_URL"
-            echo ""
+    echo "   ⏳ Configuring recorder with tunnel..."
+    echo ""
 
-            # Automatically configure recorder server with dual URL
-            echo "   🔧 Configuring recorder server..."
+    # Run tunnel setup script in background
+    ./scripts/tunnel-setup-recorder.sh &
+    TUNNEL_SETUP_PID=$!
 
-            # Create temporary .env file locally with current tunnel URL
-            cat > /tmp/felix-recorder.env << EOF
-# Workers API Configuration
-# Primary: Local tunnel (auto-detected, preferred)
-WORKERS_API_URL_PRIMARY=$TUNNEL_URL
-# Fallback: Production (always available)
-WORKERS_API_URL_FALLBACK=https://felix-radio-api.7wario.workers.dev
-INTERNAL_API_KEY=dev_api_key_12345
-
-# OpenAI Whisper API
-OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
-
-# Cloudflare R2 Configuration
-R2_ACCOUNT_ID=ed20098766cafda6a8821fcc3be0ac43
-R2_ACCESS_KEY_ID=4972687ffcb2b717819580b75bffd463
-R2_SECRET_ACCESS_KEY=0452e5853a5c20bb833f2ae132ba9875731df49a970ffb2a1bc5fa11b425246f
-R2_BUCKET_NAME=felix-radio-recordings
-R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
-
-# Configuration
-TZ=Asia/Seoul
-LOG_LEVEL=info
-EOF
-
-            # Upload .env file to recorder server
-            scp -q /tmp/felix-recorder.env root@158.247.206.183:felix-radio/packages/recorder/.env
-            rm /tmp/felix-recorder.env
-            echo "   ✅ Recorder .env updated to $TUNNEL_URL"
-
-            echo "   🔄 Restarting recorder service..."
-            ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose down && docker-compose up -d" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted with new tunnel URL"
-
-            echo ""
-            echo "   📋 Recorder will auto-detect and use local tunnel"
-            echo "   📊 Check recorder logs: ssh root@158.247.206.183 'cd felix-radio/packages/recorder && docker-compose logs --tail=20'"
-            break
+    # Wait briefly to show tunnel URL
+    sleep 3
+    if [ -f "/tmp/felix-tunnel.log" ] && grep -q "https://" /tmp/felix-tunnel.log 2>/dev/null; then
+        TUNNEL_URL=$(grep -E -o 'https://[a-zA-Z0-9\-]+\.trycloudflare\.com' /tmp/felix-tunnel.log | head -1)
+        if [ -n "$TUNNEL_URL" ]; then
+            echo "   🔗 Tunnel URL: $TUNNEL_URL"
         fi
-        if [ $i -eq 30 ]; then
-            echo "   ❌ Tunnel failed to start within 30 seconds"
-            echo "   📋 Check logs: tail -f /tmp/felix-tunnel.log"
-            kill $TUNNEL_PID 2>/dev/null
-            exit 1
-        fi
-        sleep 1
-    done
+    fi
 
     echo ""
 fi
