@@ -103,7 +103,7 @@ if [ "$WITH_API" = true ]; then
     fi
 
     # Start API server in background
-    cd apps/api && pnpm dev > /tmp/felix-api.log 2>&1 &
+    (cd apps/api && pnpm dev > /tmp/felix-api.log 2>&1) &
     API_PID=$!
     echo $API_PID > /tmp/felix-api.pid
 
@@ -123,7 +123,6 @@ if [ "$WITH_API" = true ]; then
         sleep 1
     done
 
-    cd ../..
     echo ""
 fi
 
