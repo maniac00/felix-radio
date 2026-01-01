@@ -26,11 +26,11 @@ INTERNAL_API_KEY=dev_api_key_12345
 # OpenAI Whisper API
 OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
 
-# Cloudflare R2 Configuration
+# Cloudflare R2 Configuration (using dev bucket for local development)
 R2_ACCOUNT_ID=ed20098766cafda6a8821fcc3be0ac43
 R2_ACCESS_KEY_ID=4972687ffcb2b717819580b75bffd463
 R2_SECRET_ACCESS_KEY=0452e5853a5c20bb833f2ae132ba9875731df49a970ffb2a1bc5fa11b425246f
-R2_BUCKET_NAME=felix-radio-recordings
+R2_BUCKET_NAME=felix-radio-recordings-dev
 R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
 
 # Configuration

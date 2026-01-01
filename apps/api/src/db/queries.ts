@@ -172,7 +172,6 @@ export async function getRecordings(
     .prepare(`
       SELECT
         r.*,
-        rs.id as station_id,
         rs.name as station_name,
         rs.stream_url as station_stream_url,
         rs.is_active as station_is_active
