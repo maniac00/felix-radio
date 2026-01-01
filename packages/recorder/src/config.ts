@@ -16,7 +16,8 @@ function getEnv(key: string, required: boolean = true): string {
 
 export function loadConfig(): Config {
   return {
-    workersApiUrl: getEnv('WORKERS_API_URL'),
+    workersApiUrlPrimary: getEnv('WORKERS_API_URL_PRIMARY', false) || '',
+    workersApiUrlFallback: getEnv('WORKERS_API_URL_FALLBACK'),
     internalApiKey: getEnv('INTERNAL_API_KEY'),
     openaiApiKey: getEnv('OPENAI_API_KEY'),
     r2AccountId: getEnv('R2_ACCOUNT_ID'),
@@ -32,8 +33,14 @@ export function loadConfig(): Config {
 export function validateConfig(config: Config): void {
   const errors: string[] = [];
 
-  if (!config.workersApiUrl.startsWith('http')) {
-    errors.push('WORKERS_API_URL must be a valid HTTP URL');
+  // Fallback URL is required
+  if (!config.workersApiUrlFallback.startsWith('http')) {
+    errors.push('WORKERS_API_URL_FALLBACK must be a valid HTTP URL');
+  }
+
+  // Primary URL is optional, but if provided must be valid
+  if (config.workersApiUrlPrimary && !config.workersApiUrlPrimary.startsWith('http')) {
+    errors.push('WORKERS_API_URL_PRIMARY must be a valid HTTP URL');
   }
 
   if (config.internalApiKey.length < 10) {

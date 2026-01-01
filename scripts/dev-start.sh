@@ -163,11 +163,14 @@ if [ "$WITH_TUNNEL" = true ]; then
             echo "   🔗 Public URL: $TUNNEL_URL"
             echo ""
 
-            # Automatically configure recorder server
+            # Automatically configure recorder server with dual URL
             echo "   🔧 Configuring recorder server..."
             ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << 'EOFENV'
-# Workers API Configuration (using local tunnel)
-WORKERS_API_URL=$TUNNEL_URL
+# Workers API Configuration
+# Primary: Local tunnel (auto-detected, preferred)
+WORKERS_API_URL_PRIMARY=$TUNNEL_URL
+# Fallback: Production (always available)
+WORKERS_API_URL_FALLBACK=https://felix-radio-api.7wario.workers.dev
 INTERNAL_API_KEY=dev_api_key_12345
 
 # OpenAI Whisper API
@@ -184,13 +187,13 @@ R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
 TZ=Asia/Seoul
 LOG_LEVEL=info
 EOFENV
-" && echo "   ✅ Recorder .env updated"
+" && echo "   ✅ Recorder .env updated (Primary: Local, Fallback: Production)"
 
             echo "   🔄 Restarting recorder service..."
-            ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose down && docker-compose up -d --build" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted"
+            ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose restart" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted"
 
             echo ""
-            echo "   📋 Recorder server configured automatically"
+            echo "   📋 Recorder will auto-detect and use local tunnel"
             echo "   📊 Check recorder logs: ssh root@158.247.206.183 'cd felix-radio/packages/recorder && docker-compose logs --tail=20'"
             break
         fi
@@ -262,32 +265,7 @@ cleanup() {
         kill $TUNNEL_PID 2>/dev/null
         rm /tmp/felix-tunnel.pid
         echo "   ✅ Tunnel stopped"
-
-        # Restore production configuration on recorder
-        echo ""
-        echo "   🔄 Restoring production configuration on recorder..."
-        ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << 'EOFENV'
-# Workers API Configuration
-WORKERS_API_URL=https://felix-radio-api.7wario.workers.dev
-INTERNAL_API_KEY=dev_api_key_12345
-
-# OpenAI Whisper API
-OPENAI_API_KEY=sk-proj-YOUR_KEY_HERE
-
-# Cloudflare R2 Configuration
-R2_ACCOUNT_ID=ed20098766cafda6a8821fcc3be0ac43
-R2_ACCESS_KEY_ID=4972687ffcb2b717819580b75bffd463
-R2_SECRET_ACCESS_KEY=0452e5853a5c20bb833f2ae132ba9875731df49a970ffb2a1bc5fa11b425246f
-R2_BUCKET_NAME=felix-radio-recordings
-R2_ENDPOINT=https://ed20098766cafda6a8821fcc3be0ac43.r2.cloudflarestorage.com
-
-# Configuration
-TZ=Asia/Seoul
-LOG_LEVEL=info
-EOFENV
-" > /dev/null 2>&1 && echo "   ✅ Production config restored"
-
-        ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose restart" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted with production config"
+        echo "   ℹ️  Recorder will auto-fallback to production API"
     fi
     exit 0
 }

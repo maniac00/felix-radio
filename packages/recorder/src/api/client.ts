@@ -7,19 +7,70 @@ import type { Schedule, RecordingMetadata } from '../types.js';
 import { logger } from '../lib/logger.js';
 
 export class WorkersAPIClient {
-  private baseUrl: string;
+  private primaryUrl: string;
+  private fallbackUrl: string;
   private apiKey: string;
+  private currentUrl: string;
 
   constructor(config: Config) {
-    this.baseUrl = config.workersApiUrl;
+    this.primaryUrl = config.workersApiUrlPrimary;
+    this.fallbackUrl = config.workersApiUrlFallback;
     this.apiKey = config.internalApiKey;
+    this.currentUrl = this.fallbackUrl; // Default to fallback
+  }
+
+  /**
+   * Check if API is healthy
+   */
+  private async isHealthy(url: string): Promise<boolean> {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+
+      const response = await fetch(`${url}/health`, {
+        method: 'GET',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch (error) {
+      logger.debug(`Health check failed for ${url}`, { error });
+      return false;
+    }
+  }
+
+  /**
+   * Select the best available API URL
+   */
+  private async selectApiUrl(): Promise<string> {
+    // Try primary first if configured
+    if (this.primaryUrl) {
+      const primaryHealthy = await this.isHealthy(this.primaryUrl);
+      if (primaryHealthy) {
+        if (this.currentUrl !== this.primaryUrl) {
+          logger.info(`Switched to primary API: ${this.primaryUrl}`);
+          this.currentUrl = this.primaryUrl;
+        }
+        return this.primaryUrl;
+      }
+    }
+
+    // Fall back to production
+    if (this.currentUrl !== this.fallbackUrl) {
+      logger.info(`Switched to fallback API: ${this.fallbackUrl}`);
+      this.currentUrl = this.fallbackUrl;
+    }
+    return this.fallbackUrl;
   }
 
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    // Select best API URL before each request
+    const baseUrl = await this.selectApiUrl();
+    const url = `${baseUrl}${endpoint}`;
 
     const headers = {
       'Content-Type': 'application/json',

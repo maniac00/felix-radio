@@ -43,7 +43,8 @@ export interface STTJob {
 }
 
 export interface Config {
-  workersApiUrl: string;
+  workersApiUrlPrimary: string; // Local tunnel (optional, preferred)
+  workersApiUrlFallback: string; // Production (required, always available)
   internalApiKey: string;
   openaiApiKey: string;
   r2AccountId: string;
