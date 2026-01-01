@@ -21,7 +21,8 @@ try {
 
 // Log configuration (redact secrets)
 logger.info('Configuration loaded', {
-  workersApiUrl: config.workersApiUrl,
+  workersApiUrlPrimary: config.workersApiUrlPrimary || '(none)',
+  workersApiUrlFallback: config.workersApiUrlFallback,
   r2Endpoint: config.r2Endpoint,
   r2BucketName: config.r2BucketName,
   timezone: config.timezone,
