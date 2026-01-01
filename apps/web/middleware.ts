@@ -10,6 +10,12 @@ export default clerkMiddleware(async (auth, req) => {
   if (isProtectedRoute(req)) {
     await auth.protect();
   }
+}, {
+  // Security: Restrict allowed request origins in production
+  // This prevents subdomain cookie leaking attacks
+  authorizedParties: process.env.NODE_ENV === 'production'
+    ? [process.env.NEXT_PUBLIC_APP_URL || 'https://felix-radio.pages.dev']
+    : undefined,
 });
 
 export const config = {

@@ -60,28 +60,72 @@ Cloudflare Pages는 두 가지 배포 방식을 제공합니다:
 ```
 Project name: felix-radio-git (또는 원하는 이름)
 Production branch: main
-Build command: cd apps/web && npm install && npm run build
+Build command: pnpm install && cd apps/web && pnpm run build
 Build output directory: apps/web/.next
 Root directory: /
 ```
 
-#### 5단계: 환경 변수 설정
+#### 5단계: Clerk 프로덕션 인스턴스 설정
+
+**⚠️ 중요**: 프로덕션 배포 전 반드시 Clerk 프로덕션 인스턴스를 생성해야 합니다.
+
+1. https://dashboard.clerk.com 접속
+2. 인스턴스 선택기에서 **Create production instance** 클릭
+3. 개발 설정 복사 또는 새로 시작 선택
+4. **API Keys** 탭에서 프로덕션 키 확인:
+   - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: `pk_live_...`
+   - `CLERK_SECRET_KEY`: `sk_live_...`
+
+#### 6단계: 환경 변수 설정
 
 Build configuration 아래 **Environment variables (advanced)** 섹션에서 추가:
 
+**⚠️ Production 환경에 설정하세요 (Preview는 선택사항)**
+
 ```bash
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
-CLERK_SECRET_KEY=sk_live_...
+# Clerk Authentication (Production keys from step 5)
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_클러xxxxxxxxxxxxxxxxx
+CLERK_SECRET_KEY=sk_live_클러xxxxxxxxxxxxxxxxx
+
+# API Configuration
 NEXT_PUBLIC_API_URL=https://felix-radio-api.7wario.workers.dev
+
+# App URL (배포 후 실제 URL로 업데이트 필요)
+NEXT_PUBLIC_APP_URL=https://felix-radio.pages.dev
+
+# Node version
 NODE_VERSION=20
 ```
 
-#### 6단계: 저장 및 배포
+#### 7단계: 저장 및 배포
 
 1. **"Save and Deploy"** 클릭
 2. 첫 빌드 자동 시작
 3. 빌드 로그에서 진행 상황 확인
-4. 성공 시 production URL 생성
+4. 성공 시 production URL 생성 (예: `https://felix-radio.pages.dev`)
+
+#### 8단계: Clerk Allowed Origins 설정 (배포 성공 후)
+
+**⚠️ 필수**: 배포 성공 후 Clerk에서 프로덕션 도메인을 허용해야 합니다.
+
+1. https://dashboard.clerk.com 접속
+2. 프로덕션 인스턴스 선택
+3. **Settings** → **Allowed Origins** 이동
+4. 프로덕션 URL 추가:
+   ```
+   https://felix-radio.pages.dev
+   또는
+   https://your-custom-domain.com
+   ```
+5. **Save** 클릭
+
+#### 9단계: NEXT_PUBLIC_APP_URL 업데이트 (선택사항)
+
+실제 배포 URL이 확정되면 Cloudflare Pages 환경 변수 업데이트:
+
+1. Settings → Environment variables
+2. `NEXT_PUBLIC_APP_URL` 값을 실제 URL로 변경
+3. Deployments → 최신 배포에서 **Retry deployment** 클릭
 
 ---
 
