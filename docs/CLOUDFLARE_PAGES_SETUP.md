@@ -1,62 +1,73 @@
-# 🚀 Cloudflare Pages - GitHub 자동 배포 설정 가이드
+# 🚀 Cloudflare Pages - 배포 가이드
 
-**작성일**: 2026-01-02
-**상태**: GitHub 자동 배포 추천
-
----
-
-## ⚠️ 배포 이슈
-
-### 문제점
-- **wrangler pages deploy**: Next.js 16과 호환성 문제로 404 에러 발생
-- **@cloudflare/next-on-pages**: Next.js 15.x까지만 지원
-
-### 해결 방안
-✅ **GitHub 자동 배포 사용** - Cloudflare가 공식 지원하는 Next.js 16 배포 방법
+**작성일**: 2026-01-02 (업데이트)
+**참고**: [Cloudflare Pages 공식 문서](https://developers.cloudflare.com/pages/)
 
 ---
 
-## 📋 GitHub 자동 배포 설정 (추천)
+## 📊 현재 상태
 
-### 1단계: Cloudflare Dashboard 접속
+- **프로젝트**: felix-radio (이미 생성됨)
+- **도메인**: felix-radio.pages.dev
+- **Git 연결**: No (Direct Upload 모드)
+- **배포 방식**: wrangler pages deploy
 
-https://dash.cloudflare.com
+---
 
-### 2단계: Pages 프로젝트 설정
+## ⚠️ 배포 옵션
 
-1. **Workers & Pages** 메뉴 클릭
-2. **felix-radio** 프로젝트 선택
-3. **Settings** → **Builds & deployments** 탭
+Cloudflare Pages는 두 가지 배포 방식을 제공합니다:
 
-### 3단계: GitHub 연결
+### 옵션 1: Git Integration (GitHub 자동 배포)
+- Git push 시 자동 배포
+- PR마다 Preview 배포
+- ⚠️ **중요**: Git Integration으로 변경하면 Direct Upload로 되돌릴 수 없음
 
-1. **"Connect to Git"** 버튼 클릭 (또는 "Configure build settings")
-2. GitHub 연결 승인
-3. 저장소 선택: **7wario-sudo/felix-radio**
-4. Branch 선택: **main**
+### 옵션 2: Direct Upload (현재 방식)
+- wrangler를 통한 수동 배포
+- 로컬 빌드 필요
+- CI/CD 파이프라인 커스터마이징 가능
 
-### 4단계: 빌드 설정 구성
+---
 
-```bash
-# Production Branch
-main
+## 🔄 옵션 1: Git Integration으로 전환 (신규 프로젝트 생성 필요)
 
-# Build command
-cd apps/web && npm install && npm run build
+### ⚠️ 주의사항
+기존 `felix-radio` 프로젝트는 Direct Upload로 생성되었습니다. Git Integration을 사용하려면:
+1. 기존 프로젝트 삭제 또는
+2. 새 프로젝트 이름으로 생성 (예: `felix-radio-v2`)
 
-# Build output directory
-apps/web/.next
+### Git Integration 설정 단계
 
-# Root directory (Path)
-/
+#### 1단계: 새 프로젝트 생성
+1. https://dash.cloudflare.com 접속
+2. **Workers & Pages** → **Create application**
+3. **Pages** → **Connect to Git** 선택
 
-# Node version
-20
+#### 2단계: GitHub 인증
+1. GitHub 계정으로 로그인
+2. Cloudflare Pages 앱 설치 승인
+3. 저장소 접근 권한 부여
+
+#### 3단계: 저장소 선택
+1. 저장소: **7wario-sudo/felix-radio** 선택
+2. **Install & Authorize** 클릭
+3. **Begin setup** 클릭
+
+#### 4단계: 빌드 설정
+**Set up builds and deployments** 페이지에서 구성:
+
+```
+Project name: felix-radio-git (또는 원하는 이름)
+Production branch: main
+Build command: cd apps/web && npm install && npm run build
+Build output directory: apps/web/.next
+Root directory: /
 ```
 
-### 5단계: 환경 변수 설정
+#### 5단계: 환경 변수 설정
 
-Production 환경 변수 추가:
+Build configuration 아래 **Environment variables (advanced)** 섹션에서 추가:
 
 ```bash
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_...
@@ -65,77 +76,120 @@ NEXT_PUBLIC_API_URL=https://felix-radio-api.7wario.workers.dev
 NODE_VERSION=20
 ```
 
-### 6단계: 저장 및 배포
+#### 6단계: 저장 및 배포
 
 1. **"Save and Deploy"** 클릭
-2. 자동으로 빌드 시작
-3. 빌드 로그에서 진행상황 확인
-4. 완료 후 배포 URL 확인
+2. 첫 빌드 자동 시작
+3. 빌드 로그에서 진행 상황 확인
+4. 성공 시 production URL 생성
 
 ---
 
-## 🔄 자동 배포 워크플로우
+## 🛠️ 옵션 2: Direct Upload 계속 사용 (권장)
 
-### Git Push → 자동 배포
+현재 프로젝트는 Direct Upload 방식으로 설정되어 있습니다. wrangler를 통한 배포 방법:
+
+### 배포 명령어
 
 ```bash
-# 로컬에서 작업
-git add .
-git commit -m "feat: add new feature"
-git push origin main
+cd apps/web
 
-# Cloudflare Pages가 자동으로:
-# 1. GitHub에서 코드 pull
-# 2. npm install 실행
-# 3. npm run build 실행
-# 4. .next 폴더 배포
-# 5. 새로운 URL 생성
+# 1. 빌드
+npm run build
+
+# 2. 배포
+npx wrangler pages deploy .next --project-name=felix-radio
 ```
 
-### Preview 배포
+### 404 에러 해결 (Next.js Static Export)
 
-- PR 생성 시 자동으로 preview deployment 생성
-- PR 브랜치마다 별도 URL 제공
-- PR 머지 후 production 자동 배포
+Next.js 앱을 정적 사이트로 export하여 배포:
+
+#### 1. next.config.ts 수정
+
+```typescript
+const nextConfig: NextConfig = {
+  output: 'export',  // Static export 활성화
+  images: {
+    unoptimized: true,
+  },
+};
+```
+
+#### 2. 빌드 및 배포
+
+```bash
+npm run build  # out 디렉토리 생성
+npx wrangler pages deploy out --project-name=felix-radio
+```
+
+### ⚠️ Static Export 제한사항
+
+- Server-side rendering (SSR) 사용 불가
+- API Routes 사용 불가
+- Dynamic Routes는 빌드 시 생성되어야 함
+- Middleware는 정적 파일로 컴파일됨
+
+**Felix Radio는 Clerk 인증과 동적 기능을 사용하므로 Static Export는 적합하지 않습니다.**
 
 ---
 
-## 📊 현재 배포 상태
+## ✅ 추천 방안: Git Integration 신규 프로젝트
 
-### wrangler deploy 배포 (404 에러)
+### 이유
+1. Next.js 16 SSR 완전 지원
+2. 자동 빌드 & 배포
+3. PR Preview 배포
+4. 서버 컴포넌트 및 Middleware 지원
+
+### 진행 방법
+1. Cloudflare Dashboard에서 **새 프로젝트** 생성
+2. **Connect to Git** 선택
+3. GitHub 저장소 연결
+4. 빌드 설정 및 환경 변수 추가
+5. 자동 배포 시작
+
+---
+
+## 📊 배포 상태
+
+### Direct Upload 배포 (404 - 호환성 이슈)
 ```
-❌ https://5e07968f.felix-radio.pages.dev (404)
-❌ https://2d98abac.felix-radio.pages.dev (404)
-❌ https://37e8e0a4.felix-radio.pages.dev (404)
+❌ https://5e07968f.felix-radio.pages.dev (Next.js 16 SSR 미지원)
 ```
 
-### 대기 중: GitHub 자동 배포
+### Git Integration (권장)
 ```
-⏳ Git 연결 필요
-⏳ 빌드 설정 필요
-✅ 설정 완료 후 자동 배포됨
+⏳ 새 프로젝트 생성 필요
+✅ 설정 후 자동 배포됨
 ```
 
 ---
 
-## ✅ 설정 체크리스트
+## ✅ Git Integration 설정 체크리스트
 
-### Cloudflare Dashboard 설정
-- [ ] Workers & Pages → felix-radio 접속
-- [ ] Settings → Builds & deployments
-- [ ] Connect to Git 클릭
-- [ ] GitHub 저장소 연결: 7wario-sudo/felix-radio
-- [ ] Build command 설정: `cd apps/web && npm install && npm run build`
-- [ ] Build output 설정: `apps/web/.next`
-- [ ] 환경 변수 추가 (4개)
-- [ ] Save and Deploy 클릭
+### 새 프로젝트 생성 (추천)
+- [ ] https://dash.cloudflare.com 접속
+- [ ] Workers & Pages → **Create application** 클릭
+- [ ] Pages → **Connect to Git** 선택
+- [ ] GitHub 로그인 및 Cloudflare Pages 앱 승인
+- [ ] 저장소 선택: **7wario-sudo/felix-radio**
+- [ ] **Install & Authorize** → **Begin setup** 클릭
+- [ ] 프로젝트 이름: `felix-radio-git` (또는 원하는 이름)
+- [ ] Production branch: `main`
+- [ ] Build command: `cd apps/web && npm install && npm run build`
+- [ ] Build output: `apps/web/.next`
+- [ ] Root directory: `/`
+- [ ] 환경 변수 4개 추가
+- [ ] **Save and Deploy** 클릭
 
 ### 배포 후 확인
 - [ ] 빌드 로그 확인 (성공 여부)
-- [ ] 배포 URL 확인
+- [ ] Production URL 확인 (`https://felix-radio-git.pages.dev`)
 - [ ] 사이트 정상 작동 확인
 - [ ] 로그인/회원가입 테스트
 - [ ] Dashboard 접근 테스트
+- [ ] API 연동 확인
 
 ---
 
