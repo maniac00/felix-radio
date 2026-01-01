@@ -165,7 +165,7 @@ if [ "$WITH_TUNNEL" = true ]; then
 
             # Automatically configure recorder server with dual URL
             echo "   🔧 Configuring recorder server..."
-            ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << 'EOFENV'
+            ssh root@158.247.206.183 "cat > felix-radio/packages/recorder/.env << EOFENV
 # Workers API Configuration
 # Primary: Local tunnel (auto-detected, preferred)
 WORKERS_API_URL_PRIMARY=$TUNNEL_URL
@@ -190,7 +190,7 @@ EOFENV
 " && echo "   ✅ Recorder .env updated (Primary: Local, Fallback: Production)"
 
             echo "   🔄 Restarting recorder service..."
-            ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose restart" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted"
+            ssh root@158.247.206.183 "cd felix-radio/packages/recorder && docker-compose down && docker-compose up -d" > /dev/null 2>&1 && echo "   ✅ Recorder service restarted"
 
             echo ""
             echo "   📋 Recorder will auto-detect and use local tunnel"
