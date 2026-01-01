@@ -158,7 +158,11 @@ if [ "$WITH_TUNNEL" = true ]; then
     # Wait for tunnel URL to appear in logs
     for i in {1..30}; do
         if grep -q "https://" /tmp/felix-tunnel.log 2>/dev/null; then
-            TUNNEL_URL=$(grep -o 'https://[^[:space:]]*\.trycloudflare\.com' /tmp/felix-tunnel.log | head -1)
+            TUNNEL_URL=$(grep -oP 'https://[\w\-]+\.trycloudflare\.com' /tmp/felix-tunnel.log 2>/dev/null | head -1)
+            # Fallback to basic grep if -P is not available
+            if [ -z "$TUNNEL_URL" ]; then
+                TUNNEL_URL=$(grep -E -o 'https://[a-zA-Z0-9\-]+\.trycloudflare\.com' /tmp/felix-tunnel.log | head -1)
+            fi
             echo "   ✅ Tunnel is ready"
             echo "   🔗 Public URL: $TUNNEL_URL"
             echo ""
