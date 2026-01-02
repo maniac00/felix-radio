@@ -144,6 +144,12 @@ importers:
         specifier: ^5
         version: 5.9.3
 
+  packages/clerk-proxy:
+    devDependencies:
+      wrangler:
+        specifier: ^3.114.16
+        version: 3.114.16(@cloudflare/workers-types@4.20251228.0)
+
   packages/recorder:
     dependencies:
       '@aws-sdk/client-s3':
