@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { apiClient } from '@/lib/api';
 
 // Check if we're in mock mode
@@ -18,17 +18,18 @@ const USE_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true';
  */
 export function ApiAuthProvider({ children }: { children: React.ReactNode }) {
   const { getToken, isLoaded } = useAuth();
-  const isConfigured = useRef(false);
+  const [isConfigured, setIsConfigured] = useState(false);
 
   useEffect(() => {
     // Skip auth setup in mock mode
     if (USE_MOCK_MODE) {
       console.log('API client running in mock mode');
+      setIsConfigured(true);
       return;
     }
 
     // Wait for Clerk to be loaded and only configure once
-    if (!isLoaded || isConfigured.current) {
+    if (!isLoaded || isConfigured) {
       return;
     }
 
@@ -36,16 +37,11 @@ export function ApiAuthProvider({ children }: { children: React.ReactNode }) {
     // This allows the API client to fetch JWT tokens on-demand for each request
     apiClient.setTokenGetter(getToken);
     console.log('API client configured with Clerk authentication');
-    isConfigured.current = true;
-  }, [getToken, isLoaded]);
+    setIsConfigured(true);
+  }, [getToken, isLoaded, isConfigured]);
 
-  // In mock mode, render children immediately
-  if (USE_MOCK_MODE) {
-    return <>{children}</>;
-  }
-
-  // Wait for Clerk to load and API client to be configured before rendering children
-  if (!isLoaded || !isConfigured.current) {
+  // Wait for configuration to complete before rendering children
+  if (!isConfigured) {
     return null; // or return a loading spinner
   }
 
