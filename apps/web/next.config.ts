@@ -7,6 +7,16 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+
+  // Skip trailing slash to avoid issues
+  skipTrailingSlashRedirect: true,
+
+  // Force all routes to use edge runtime
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb',
+    },
+  },
 };
 
 export default nextConfig;
