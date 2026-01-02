@@ -13,22 +13,80 @@ Felix Radio 프로젝트의 Clerk 인증을 Production 모드로 전환하는 �
 
 ---
 
+## ⚠️ 중요: Clerk Production 인스턴스 제약사항
+
+### 도메인 소유권 필수 요구사항
+
+Clerk Production 인스턴스를 생성하려면 **반드시 소유한 커스텀 도메인이 필요합니다**.
+
+**현재 상황:**
+- ❌ Vercel의 `.vercel.app` 도메인은 Clerk Production 정책상 허용되지 않음
+- ❌ Cloudflare의 `.workers.dev` 도메인은 CNAME 레코드 설정 불가
+- ⚠️ 현재 Production 키에 `clerk.7wario.workers.dev` 도메인이 임베드되어 있어 CORS 525 에러 발생
+
+**Clerk 공식 문서에서 확인된 사항:**
+> "Before you begin: You will need to have a domain you own"
+>
+> 출처: [Clerk Production Deployment](https://clerk.com/docs/guides/development/deployment/production)
+
+### 해결 방안
+
+다음 3가지 옵션 중 선택 필요:
+
+#### 옵션 A: 커스텀 도메인 구매 (권장 - 프로덕션 환경)
+- ✅ 완전한 Clerk Production 기능 사용 가능
+- ✅ 브랜딩 및 프로페셔널한 도메인
+- 💰 비용: 연 $10-20 (도메인 등록)
+- ⏱️ 시간: DNS 전파 최대 48시간
+- 📋 필요 작업:
+  1. 도메인 구매 (예: felix-radio.com)
+  2. Cloudflare DNS에서 CNAME 레코드 5개 설정
+  3. Clerk Dashboard에서 커스텀 도메인 설정
+  4. SSL 인증서 자동 발급 대기
+
+#### 옵션 B: Development 인스턴스 계속 사용 (현재 상태 유지)
+- ✅ 추가 비용 없음
+- ✅ 즉시 사용 가능
+- ⚠️ Development 키 경고 메시지 표시
+- ⚠️ 일부 프로덕션 기능 제한 가능
+- 📋 필요 작업:
+  1. 기존 Development 인스턴스 키 계속 사용
+  2. 향후 도메인 준비되면 Production으로 마이그레이션
+
+#### 옵션 C: 대체 인증 솔루션 검토
+- 🔄 NextAuth.js, Supabase Auth, Auth0 등
+- ⚠️ 대규모 리팩토링 필요
+- ⚠️ 기존 Clerk 통합 코드 전체 교체 필요
+
+**현재 권장사항**:
+- 단기: 옵션 B (Development 인스턴스 유지)
+- 장기: 옵션 A (도메인 구매 후 Production 전환)
+
+---
+
 ## ✅ 설정 완료 현황
 
 ### 완료된 작업
-- [x] Clerk Production keys 발급
-  - Publishable: `pk_live_Y2xlcmsuN3dhcmlvLndvcmtlcnMuZGV2JA`
+- [x] Clerk Production keys 발급 (도메인 임베드 문제 발견)
+  - Publishable: `pk_live_Y2xlcmsuN3dhcmlvLndvcmtlcnMuZGV2JA` (clerk.7wario.workers.dev 포함)
   - Secret: `sk_live_••••••••••••••••••••••••••••••••••••••••`
 - [x] Cloudflare Workers API에 Production secret key 설정
 - [x] 로컬 환경변수 파일 업데이트 (.env.local, .dev.vars)
 - [x] 로그아웃 리디렉션 경로 수정 (/sign-in → /login)
 - [x] Google OAuth 이메일 필수 설정
 - [x] Mock 모드 제거
+- [x] Paths 설정 (코드에서 ClerkProvider props로 구현)
+- [x] CORS 525 에러 원인 분석 완료
 
-### 진행 중인 작업
-- [ ] **Vercel 환경변수 설정** ⬅️ 다음 단계
-- [ ] Clerk Dashboard 도메인 설정
-- [ ] 프로덕션 배포 및 테스트
+### 차단된 작업 (Blocker)
+- ❌ **Clerk Production 인스턴스 사용** - 커스텀 도메인 소유권 필요
+  - 현재 Production 키에 clerk.7wario.workers.dev 도메인이 임베드됨
+  - .vercel.app 도메인은 Clerk에서 허용하지 않음
+  - .workers.dev 도메인은 CNAME 레코드 설정 불가
+  - **해결책**: 커스텀 도메인 구매 또는 Development 인스턴스 사용
+
+### 다음 단계
+사용자 결정 필요: 옵션 A (도메인 구매) vs 옵션 B (Development 인스턴스 유지) vs 옵션 C (대체 솔루션)
 
 ---
 
@@ -188,21 +246,61 @@ CLERK_SECRET_KEY=sk_live_••••••••••••••••••�
 
 ---
 
+## 🔍 기술적 발견사항
+
+### Clerk Publishable Key 구조 분석
+
+Clerk의 Publishable Key는 단순한 API 키가 아니라 **도메인 정보가 Base64로 인코딩되어 포함**되어 있습니다.
+
+**현재 키 분석**:
+```bash
+pk_live_Y2xlcmsuN3dhcmlvLndvcmtlcnMuZGV2JA
+```
+
+Base64 디코딩 결과:
+```
+clerk.7wario.workers.dev$
+```
+
+**핵심 발견**:
+- Publishable Key 자체에 도메인 정보가 하드코딩됨
+- 환경변수로 `NEXT_PUBLIC_CLERK_FRONTEND_API`를 제거해도 키에 포함된 도메인으로 접속 시도
+- 이것이 `https://clerk.7wario.workers.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js` CORS 525 에러의 근본 원인
+
+**해결 불가능한 이유**:
+1. Clerk 인스턴스 생성 시 도메인이 정해지면 변경 불가
+2. Publishable Key 재생성 시에도 동일한 도메인 사용
+3. 도메인 삭제 불가 (Clerk Dashboard에서 차단됨)
+4. 새 Production 인스턴스 생성 시 도메인 소유권 필수
+
+**결론**:
+현재 발급된 Production 키는 clerk.7wario.workers.dev 도메인을 포함하고 있어, 커스텀 도메인 없이는 CORS 에러 해결 불가능.
+
+---
+
 ## 🚨 문제 해결
 
-### 문제 1: "Failed to load Clerk" CORS 에러
+### 문제 1: "Failed to load Clerk" CORS 525 에러 (현재 상황)
 **증상**:
 ```
-Access to script at 'https://clerk.7wario.workers.dev/...' blocked by CORS policy
+Failed to load resource: the server responded with a status of 525
+GET https://clerk.7wario.workers.dev/npm/@clerk/clerk-js@5/dist/clerk.browser.js net::ERR_ABORTED 525
+Clerk: Failed to load Clerk
 ```
 
-**원인**: 커스텀 Frontend API 설정으로 인한 문제
+**근본 원인**: Publishable Key에 clerk.7wario.workers.dev 도메인이 임베드되어 있음 (위 "기술적 발견사항" 참조)
 
-**해결**:
-1. Vercel 환경변수에서 `NEXT_PUBLIC_CLERK_FRONTEND_API` 삭제
-2. Vercel 환경변수에서 `CLERK_FRONTEND_API` 삭제
-3. Redeploy
-4. 브라우저 캐시 삭제
+**시도한 해결 방법들** (모두 실패):
+1. ❌ Vercel 환경변수에서 `NEXT_PUBLIC_CLERK_FRONTEND_API` 삭제 → 키 자체에 도메인 포함
+2. ❌ Cloudflare Workers 프록시 생성 → SSL Handshake 실패
+3. ❌ Clerk Dashboard에서 도메인 삭제 → 삭제 불가
+4. ❌ 새 Production 인스턴스 생성 → 도메인 소유권 필수
+
+**현재 상태**: **해결 불가 (커스텀 도메인 필요)**
+
+**실질적인 해결책**:
+- **옵션 A**: 커스텀 도메인 구매 (예: felix-radio.com) 후 새 Production 인스턴스 생성
+- **옵션 B**: Development 인스턴스 키로 되돌림 (pk_test_로 시작하는 키 사용)
 
 ### 문제 2: "Invalid token: missing email" 401 에러
 **증상**: API 요청 시 401 Unauthorized
