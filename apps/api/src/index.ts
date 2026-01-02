@@ -12,7 +12,12 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // CORS middleware
 app.use('/*', cors({
-  origin: ['http://localhost:3000', 'http://localhost:8787'],
+  origin: [
+    'http://localhost:3000',
+    'http://localhost:8787',
+    'https://felix-radio-web-i3da.vercel.app',
+    'https://felix-radio.vercel.app',
+  ],
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
   credentials: true,
