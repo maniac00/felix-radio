@@ -18,13 +18,13 @@ const USE_MOCK_MODE = process.env.NEXT_PUBLIC_USE_MOCK_API === 'true';
  */
 export function ApiAuthProvider({ children }: { children: React.ReactNode }) {
   const { getToken, isLoaded } = useAuth();
-  const [isConfigured, setIsConfigured] = useState(false);
+  // In mock mode, start configured. Otherwise start unconfigured.
+  const [isConfigured, setIsConfigured] = useState(USE_MOCK_MODE);
 
   useEffect(() => {
     // Skip auth setup in mock mode
     if (USE_MOCK_MODE) {
       console.log('API client running in mock mode');
-      setIsConfigured(true);
       return;
     }
 
