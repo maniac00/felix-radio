@@ -39,7 +39,15 @@ export function ApiAuthProvider({ children }: { children: React.ReactNode }) {
     isConfigured.current = true;
   }, [getToken, isLoaded]);
 
-  // In mock mode or after configuration, always render children
-  // Clerk handles loading states internally via useAuth
+  // In mock mode, render children immediately
+  if (USE_MOCK_MODE) {
+    return <>{children}</>;
+  }
+
+  // Wait for Clerk to load and API client to be configured before rendering children
+  if (!isLoaded || !isConfigured.current) {
+    return null; // or return a loading spinner
+  }
+
   return <>{children}</>;
 }

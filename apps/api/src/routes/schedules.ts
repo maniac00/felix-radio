@@ -192,7 +192,11 @@ schedules.post('/', async (c) => {
   } catch (error) {
     console.error('Error creating schedule:', error);
     return c.json(
-      { error: 'Failed to create schedule' },
+      {
+        error: 'Failed to create schedule',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : String(error)
+      },
       500
     );
   }
