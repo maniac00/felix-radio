@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev --remote",
+    "dev": "wrangler dev --local --persist-to=.wrangler/state",
+    "dev:remote": "wrangler dev --remote",
     "deploy": "wrangler deploy",
     "db:migrate:local": "wrangler d1 execute felix-radio-db --local --file",
     "db:migrate:prod": "wrangler d1 execute felix-radio-db --remote --file",
