@@ -14,9 +14,9 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.redirect(new URL('/dashboard', req.url));
   }
 
-  // Redirect unauthenticated users from root to sign-in
+  // Redirect unauthenticated users from root to login
   if (req.nextUrl.pathname === '/' && !userId) {
-    return NextResponse.redirect(new URL('/sign-in', req.url));
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
   // Protect dashboard routes

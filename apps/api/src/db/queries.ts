@@ -338,14 +338,36 @@ export async function upsertUser(
   userId: string,
   email: string
 ): Promise<void> {
-  await db
-    .prepare(`
-      INSERT INTO users (id, email)
-      VALUES (?, ?)
-      ON CONFLICT(id) DO UPDATE SET
-        email = excluded.email,
-        updated_at = CURRENT_TIMESTAMP
-    `)
-    .bind(userId, email)
-    .run();
+  // Email is required - this should come from Google OAuth via Clerk
+  if (!email) {
+    throw new Error('Email is required for user creation');
+  }
+
+  // First, check if this email exists with a different user ID
+  const existingUser = await db
+    .prepare('SELECT id, email FROM users WHERE email = ?')
+    .bind(email)
+    .first();
+
+  if (existingUser && existingUser.id !== userId) {
+    // Same email but different user ID - update the user ID
+    // This can happen if the user's Clerk account was recreated
+    console.log(`[upsertUser] Updating user ID from ${existingUser.id} to ${userId} for email ${email}`);
+    await db
+      .prepare('UPDATE users SET id = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
+      .bind(userId, email)
+      .run();
+  } else {
+    // Normal insert or update
+    await db
+      .prepare(`
+        INSERT INTO users (id, email)
+        VALUES (?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          email = excluded.email,
+          updated_at = CURRENT_TIMESTAMP
+      `)
+      .bind(userId, email)
+      .run();
+  }
 }

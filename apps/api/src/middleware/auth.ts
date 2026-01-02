@@ -75,7 +75,21 @@ export async function clerkAuth(
 
     // Extract user ID and email from the token payload
     const userId = payload.sub;
-    const email = payload.email as string | undefined;
+
+    // Clerk stores email in different fields depending on the token type
+    // Try primary_email_address_id, email, or email_addresses
+    let email = payload.email as string | undefined;
+
+    // If email is not directly available, try to get it from email_addresses
+    if (!email && payload.email_addresses) {
+      const emailAddresses = payload.email_addresses as any[];
+      if (emailAddresses && emailAddresses.length > 0) {
+        email = emailAddresses[0].email_address;
+      }
+    }
+
+    console.log('[Auth Middleware] User ID:', userId);
+    console.log('[Auth Middleware] Email:', email || 'NOT FOUND');
 
     if (!userId) {
       return c.json(
@@ -87,9 +101,20 @@ export async function clerkAuth(
       );
     }
 
+    if (!email) {
+      console.error('[Auth Middleware] No email found in token payload:', JSON.stringify(payload, null, 2));
+      return c.json(
+        {
+          error: 'Unauthorized',
+          message: 'Invalid token: missing email',
+        },
+        401
+      );
+    }
+
     // Attach userId and email to context for downstream handlers
     c.set('userId', userId);
-    c.set('userEmail', email || '');
+    c.set('userEmail', email);
 
     await next();
   } catch (error) {
