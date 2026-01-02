@@ -16,6 +16,8 @@ import { apiClient } from '@/lib/api';
 import { Recording, RecordingStatus, STTStatus } from '@/lib/types';
 import { toast } from 'sonner';
 
+export const runtime = 'edge';
+
 export default function RecordingsPage() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [isLoading, setIsLoading] = useState(true);

@@ -24,6 +24,8 @@ import {
 } from '@/lib/utils';
 import { toast } from 'sonner';
 
+export const runtime = 'edge';
+
 export default function RecordingDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -37,6 +39,7 @@ export default function RecordingDetailPage() {
 
   useEffect(() => {
     loadRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recordingId]);
 
   const loadRecording = async () => {
@@ -101,7 +104,7 @@ export default function RecordingDetailPage() {
           setSTTText(text);
           setIsConverting(false);
           toast.success('STT 변환이 완료되었습니다');
-        } catch (error) {
+        } catch {
           setIsConverting(false);
           toast.error('STT 결과를 불러오는데 실패했습니다');
         }
@@ -119,7 +122,7 @@ export default function RecordingDetailPage() {
       setCopied(true);
       toast.success('텍스트가 클립보드에 복사되었습니다');
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
+    } catch {
       toast.error('복사에 실패했습니다');
     }
   };

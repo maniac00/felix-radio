@@ -429,8 +429,8 @@ class ApiClient {
       total_recordings: number;
       active_schedules: number;
       storage_used_bytes: number;
-      recent_recordings: any[];
-      next_schedule: any;
+      recent_recordings: Recording[];
+      next_schedule: Schedule | null;
     }>('/api/dashboard/stats');
 
     // Transform API response to match frontend types

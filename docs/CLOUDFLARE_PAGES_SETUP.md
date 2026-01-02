@@ -60,10 +60,16 @@ Cloudflare Pages는 두 가지 배포 방식을 제공합니다:
 ```
 Project name: felix-radio-git (또는 원하는 이름)
 Production branch: main
-Build command: pnpm install && cd apps/web && pnpm run build
-Build output directory: apps/web/.next
+Framework preset: Next.js
+Build command: pnpm install && cd apps/web && npx @cloudflare/next-on-pages@1
+Build output directory: apps/web/.vercel/output/static
 Root directory: /
 ```
+
+**⚠️ 중요**:
+- Next.js 15.5.2까지만 @cloudflare/next-on-pages에서 지원됩니다
+- Build command는 반드시 `npx @cloudflare/next-on-pages@1`를 사용해야 합니다
+- Output directory는 `.vercel/output/static`입니다 (`.next`가 아님)
 
 #### 5단계: Clerk 프로덕션 인스턴스 설정
 

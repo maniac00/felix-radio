@@ -24,9 +24,11 @@ import {
 import { ScheduleForm } from '@/components/schedules/schedule-form';
 import { Plus, Edit, Trash2, Loader2 } from 'lucide-react';
 import { apiClient } from '@/lib/api';
-import { Schedule, RadioStation } from '@/lib/types';
+import { Schedule, RadioStation, ScheduleCreateRequest } from '@/lib/types';
 import { formatDaysOfWeek, parseDaysOfWeek, formatDurationMinutes } from '@/lib/utils';
 import { toast } from 'sonner';
+
+export const runtime = 'edge';
 
 export default function SchedulesPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -63,7 +65,7 @@ export default function SchedulesPage() {
     }
   };
 
-  const handleCreate = async (data: any) => {
+  const handleCreate = async (data: ScheduleCreateRequest) => {
     try {
       const newSchedule = await apiClient.createSchedule(data);
       setSchedules([...schedules, newSchedule]);
@@ -75,7 +77,7 @@ export default function SchedulesPage() {
     }
   };
 
-  const handleUpdate = async (data: any) => {
+  const handleUpdate = async (data: ScheduleCreateRequest) => {
     if (!editingSchedule) return;
 
     try {

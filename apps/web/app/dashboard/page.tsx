@@ -10,6 +10,8 @@ import { DashboardStats, Recording, Schedule } from '@/lib/types';
 import { formatRelativeTime, formatFileSize, formatDaysOfWeek, parseDaysOfWeek } from '@/lib/utils';
 import { toast } from 'sonner';
 
+export const runtime = 'edge';
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentRecordings, setRecentRecordings] = useState<Recording[]>([]);

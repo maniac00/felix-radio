@@ -22,6 +22,7 @@ export const metadata: Metadata = {
 
 // Force dynamic rendering to prevent static generation errors with Clerk
 export const dynamic = 'force-dynamic';
+export const runtime = 'edge';
 
 export default function RootLayout({
   children,
