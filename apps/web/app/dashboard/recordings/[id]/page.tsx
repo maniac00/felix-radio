@@ -36,6 +36,7 @@ export default function RecordingDetailPage() {
   const [isConverting, setIsConverting] = useState(false);
   const [sttText, setSTTText] = useState('');
   const [copied, setCopied] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string>('');
 
   useEffect(() => {
     loadRecording();
@@ -47,6 +48,16 @@ export default function RecordingDetailPage() {
       setIsLoading(true);
       const data = await apiClient.getRecording(recordingId);
       setRecording(data);
+
+      // Load audio URL if recording is completed
+      if (data.status === 'completed') {
+        try {
+          const url = await apiClient.getRecordingDownloadUrl(recordingId);
+          setAudioUrl(url);
+        } catch (error) {
+          console.error('Failed to load audio URL:', error);
+        }
+      }
 
       // Load STT text if already completed
       if (data.stt_status === 'completed') {
@@ -97,7 +108,7 @@ export default function RecordingDetailPage() {
 
       await apiClient.triggerSTT(recordingId);
 
-      // Poll for completion (in mock mode, this will complete after 3 seconds)
+      // Poll for completion
       setTimeout(async () => {
         try {
           const text = await apiClient.getSTTResult(recordingId);
@@ -177,9 +188,9 @@ export default function RecordingDetailPage() {
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
           {/* Audio Player */}
-          {recording.status === 'completed' && (
+          {recording.status === 'completed' && audioUrl && (
             <AudioPlayer
-              src="/mock-audio.mp3"
+              src={audioUrl}
               title={recording.program_name}
             />
           )}

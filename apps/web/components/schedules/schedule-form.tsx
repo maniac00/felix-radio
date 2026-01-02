@@ -23,7 +23,6 @@ import {
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Schedule, RadioStation, DAYS_OF_WEEK } from '@/lib/types';
-import { mockStations } from '@/lib/mock-data';
 
 const scheduleFormSchema = z.object({
   program_name: z.string().min(1, '프로그램 이름을 입력하세요').max(100),
@@ -44,7 +43,7 @@ interface ScheduleFormProps {
   onCancel: () => void;
 }
 
-export function ScheduleForm({ schedule, stations = mockStations, onSubmit, onCancel }: ScheduleFormProps) {
+export function ScheduleForm({ schedule, stations = [], onSubmit, onCancel }: ScheduleFormProps) {
   const form = useForm<ScheduleFormValues>({
     resolver: zodResolver(scheduleFormSchema),
     mode: 'onSubmit', // Only validate on submit, not on change
