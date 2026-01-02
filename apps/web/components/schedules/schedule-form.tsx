@@ -47,6 +47,7 @@ interface ScheduleFormProps {
 export function ScheduleForm({ schedule, stations = mockStations, onSubmit, onCancel }: ScheduleFormProps) {
   const form = useForm<ScheduleFormValues>({
     resolver: zodResolver(scheduleFormSchema),
+    mode: 'onSubmit', // Only validate on submit, not on change
     defaultValues: schedule
       ? {
           program_name: schedule.program_name,
