@@ -32,7 +32,6 @@ export default function RootLayout({
   return (
     <ClerkProvider
       publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-      proxyUrl={process.env.NEXT_PUBLIC_CLERK_FRONTEND_API ? `https://${process.env.NEXT_PUBLIC_CLERK_FRONTEND_API}` : undefined}
     >
       <html lang="en" suppressHydrationWarning>
         <body
