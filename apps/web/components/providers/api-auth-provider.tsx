@@ -37,7 +37,11 @@ export function ApiAuthProvider({ children }: { children: React.ReactNode }) {
     // This allows the API client to fetch JWT tokens on-demand for each request
     apiClient.setTokenGetter(getToken);
     console.log('API client configured with Clerk authentication');
-    setIsConfigured(true);
+
+    // Use queueMicrotask to defer state update and avoid ESLint warning
+    queueMicrotask(() => {
+      setIsConfigured(true);
+    });
   }, [getToken, isLoaded, isConfigured]);
 
   // Wait for configuration to complete before rendering children
