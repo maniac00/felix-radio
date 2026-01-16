@@ -1,4 +1,4 @@
-import { UserButton } from '@clerk/nextjs';
+import { UserMenu } from '@/components/auth/user-menu';
 import Link from 'next/link';
 import { Home, Calendar, Radio, Settings } from 'lucide-react';
 
@@ -23,14 +23,7 @@ export default function DashboardLayout({
             <span className="text-2xl">🐱</span>
             <h1 className="text-xl font-bold text-navy">Felix Radio</h1>
           </div>
-          <UserButton
-            appearance={{
-              elements: {
-                avatarBox: 'w-10 h-10',
-              },
-            }}
-            afterSignOutUrl="/"
-          />
+          <UserMenu />
         </div>
       </header>
 
@@ -55,9 +48,7 @@ export default function DashboardLayout({
         </aside>
 
         {/* Main Content */}
-        <main className="flex-1 ml-64 p-8">
-          {children}
-        </main>
+        <main className="flex-1 ml-64 p-8">{children}</main>
       </div>
     </div>
   );

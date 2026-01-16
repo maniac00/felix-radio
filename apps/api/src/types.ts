@@ -8,7 +8,7 @@
 export type Bindings = {
   DB: D1Database;
   R2: R2Bucket;
-  CLERK_SECRET_KEY: string;
+  JWT_SECRET: string;
   INTERNAL_API_KEY: string;
 };
 

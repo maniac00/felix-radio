@@ -1,35 +1,13 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import NextAuth from 'next-auth';
+import { authConfig } from './auth.config';
 
-// Define protected routes that require authentication
-const isProtectedRoute = createRouteMatcher([
-  '/dashboard(.*)',
-]);
-
-export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
-
-  // Redirect authenticated users from root to dashboard
-  if (req.nextUrl.pathname === '/' && userId) {
-    return NextResponse.redirect(new URL('/dashboard', req.url));
-  }
-
-  // Redirect unauthenticated users from root to login
-  if (req.nextUrl.pathname === '/' && !userId) {
-    return NextResponse.redirect(new URL('/login', req.url));
-  }
-
-  // Protect dashboard routes
-  if (isProtectedRoute(req)) {
-    await auth.protect();
-  }
-});
+export default NextAuth(authConfig).auth;
 
 export const config = {
   matcher: [
     // Skip Next.js internals and all static files, unless found in search params
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    // Always run for API routes
-    "/(api|trpc)(.*)",
+    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
+    // Always run for API routes (except NextAuth routes)
+    '/(api(?!/auth))(.*)',
   ],
 };

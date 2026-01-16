@@ -1,16 +1,16 @@
 /**
- * Clerk Authentication Middleware
- * Validates JWT tokens from Clerk and extracts user information
+ * JWT Authentication Middleware
+ * Validates JWT tokens using jose and extracts user information
  */
 
-import { verifyToken } from '@clerk/backend';
+import { jwtVerify } from 'jose';
 import type { Context, Next } from 'hono';
-import type { Bindings } from '../types';
+import type { Bindings, Variables } from '../types';
 
 /**
  * Extract token from Authorization header
  */
-function extractToken(authHeader: string | null): string | null {
+function extractToken(authHeader: string | null | undefined): string | null {
   if (!authHeader) return null;
 
   const parts = authHeader.split(' ');
@@ -20,11 +20,11 @@ function extractToken(authHeader: string | null): string | null {
 }
 
 /**
- * Clerk JWT authentication middleware
- * Validates the token and attaches userId to context
+ * JWT authentication middleware
+ * Validates the token and attaches userId and email to context
  */
-export async function clerkAuth(
-  c: Context<{ Bindings: Bindings }>,
+export async function jwtAuth(
+  c: Context<{ Bindings: Bindings; Variables: Variables }>,
   next: Next
 ) {
   const authHeader = c.req.header('Authorization');
@@ -55,10 +55,10 @@ export async function clerkAuth(
   }
 
   try {
-    const secretKey = c.env.CLERK_SECRET_KEY;
+    const jwtSecret = c.env.JWT_SECRET;
 
-    if (!secretKey) {
-      console.error('CLERK_SECRET_KEY is not configured');
+    if (!jwtSecret) {
+      console.error('JWT_SECRET is not configured');
       return c.json(
         {
           error: 'Internal Server Error',
@@ -68,25 +68,13 @@ export async function clerkAuth(
       );
     }
 
-    // Verify the Clerk JWT token
-    const payload = await verifyToken(token, {
-      secretKey,
-    });
+    // Verify the JWT token using jose
+    const secret = new TextEncoder().encode(jwtSecret);
+    const { payload } = await jwtVerify(token, secret);
 
     // Extract user ID and email from the token payload
-    const userId = payload.sub;
-
-    // Clerk stores email in different fields depending on the token type
-    // Try primary_email_address_id, email, or email_addresses
-    let email = payload.email as string | undefined;
-
-    // If email is not directly available, try to get it from email_addresses
-    if (!email && payload.email_addresses) {
-      const emailAddresses = payload.email_addresses as any[];
-      if (emailAddresses && emailAddresses.length > 0) {
-        email = emailAddresses[0].email_address;
-      }
-    }
+    const userId = payload.sub as string;
+    const email = payload.email as string;
 
     console.log('[Auth Middleware] User ID:', userId);
     console.log('[Auth Middleware] Email:', email || 'NOT FOUND');
@@ -129,3 +117,6 @@ export async function clerkAuth(
     );
   }
 }
+
+// Export with the old name for backward compatibility during migration
+export const clerkAuth = jwtAuth;
