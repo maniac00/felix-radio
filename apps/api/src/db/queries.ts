@@ -338,7 +338,7 @@ export async function upsertUser(
   userId: string,
   email: string
 ): Promise<void> {
-  // Email is required - this should come from Google OAuth via Clerk
+  // Email is required - this should come from Google OAuth
   if (!email) {
     throw new Error('Email is required for user creation');
   }
@@ -350,13 +350,30 @@ export async function upsertUser(
     .first();
 
   if (existingUser && existingUser.id !== userId) {
-    // Same email but different user ID - update the user ID
-    // This can happen if the user's Clerk account was recreated
-    console.log(`[upsertUser] Updating user ID from ${existingUser.id} to ${userId} for email ${email}`);
+    // Same email but different user ID - migrate all data to new user ID
+    // This happens when auth provider changes (e.g., Clerk -> NextAuth)
+    const oldUserId = existingUser.id as string;
+    console.log(`[upsertUser] Migrating user data from ${oldUserId} to ${userId} for email ${email}`);
+
+    // Update schedules to use new user ID
+    await db
+      .prepare('UPDATE schedules SET user_id = ? WHERE user_id = ?')
+      .bind(userId, oldUserId)
+      .run();
+
+    // Update recordings to use new user ID
+    await db
+      .prepare('UPDATE recordings SET user_id = ? WHERE user_id = ?')
+      .bind(userId, oldUserId)
+      .run();
+
+    // Update user record with new ID
     await db
       .prepare('UPDATE users SET id = ?, updated_at = CURRENT_TIMESTAMP WHERE email = ?')
       .bind(userId, email)
       .run();
+
+    console.log(`[upsertUser] Migration complete for ${email}`);
   } else {
     // Normal insert or update
     await db
