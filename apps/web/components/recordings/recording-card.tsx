@@ -1,17 +1,46 @@
+'use client';
+
+import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Recording } from '@/lib/types';
 import { formatDateTime, formatFileSize, formatDuration } from '@/lib/utils';
-import { Download, FileText, AlertCircle, Clock } from 'lucide-react';
+import { Download, FileText, AlertCircle, Clock, Trash2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 
 interface RecordingCardProps {
   recording: Recording;
   onDownload?: (recording: Recording) => void;
+  onDelete?: (recording: Recording) => Promise<void>;
 }
 
-export function RecordingCard({ recording, onDownload }: RecordingCardProps) {
+export function RecordingCard({ recording, onDownload, onDelete }: RecordingCardProps) {
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await onDelete(recording);
+      setIsDialogOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   const getStatusBadge = () => {
     switch (recording.status) {
       case 'completed':
@@ -86,7 +115,47 @@ export function RecordingCard({ recording, onDownload }: RecordingCardProps) {
               )}
             </div>
           </div>
-          <div className="ml-4">
+          <div className="ml-4 flex items-center space-x-2">
+            {onDelete && (
+              <AlertDialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>녹음 삭제</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      &quot;{recording.program_name}&quot; 녹음을 삭제하시겠습니까?
+                      <br />
+                      이 작업은 되돌릴 수 없으며, 녹음 파일도 함께 삭제됩니다.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isDeleting}>취소</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                      className="bg-red-600 hover:bg-red-700"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          삭제 중...
+                        </>
+                      ) : (
+                        '삭제'
+                      )}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            )}
             {recording.status === 'completed' && (
               <Button
                 variant="outline"

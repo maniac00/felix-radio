@@ -81,6 +81,19 @@ export default function RecordingsPage() {
     }
   };
 
+  const handleDelete = async (recording: Recording) => {
+    try {
+      await apiClient.deleteRecording(recording.id);
+      // Remove from local state
+      setRecordings((prev) => prev.filter((r) => r.id !== recording.id));
+      toast.success(`${recording.program_name} 녹음이 삭제되었습니다`);
+    } catch (error) {
+      toast.error('녹음 삭제에 실패했습니다');
+      console.error('Failed to delete recording:', error);
+      throw error; // Re-throw to keep dialog open on error
+    }
+  };
+
   const handleResetFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
@@ -181,6 +194,7 @@ export default function RecordingsPage() {
               key={recording.id}
               recording={recording}
               onDownload={handleDownload}
+              onDelete={handleDelete}
             />
           ))
         )}
