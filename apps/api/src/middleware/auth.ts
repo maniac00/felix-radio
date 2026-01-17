@@ -6,7 +6,6 @@
 import { jwtVerify } from 'jose';
 import type { Context, Next } from 'hono';
 import type { Bindings, Variables } from '../types';
-import { upsertUser } from '../db/queries';
 
 /**
  * Extract token from Authorization header
@@ -104,15 +103,6 @@ export async function jwtAuth(
     // Attach userId and email to context for downstream handlers
     c.set('userId', userId);
     c.set('userEmail', email);
-
-    // Upsert user on every authenticated request
-    // This handles user migration when auth provider changes
-    try {
-      await upsertUser(c.env.DB, userId, email);
-    } catch (error) {
-      console.error('[Auth Middleware] Failed to upsert user:', error);
-      // Don't block the request if upsert fails
-    }
 
     await next();
   } catch (error) {
