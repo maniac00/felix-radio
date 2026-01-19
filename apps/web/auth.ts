@@ -15,8 +15,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     ...authConfig.callbacks,
     jwt({ token, user, account }) {
       // Initial sign in - add user info to token
-      if (user) {
-        token.id = user.id;
+      if (account && user) {
+        // Use Google's unique providerAccountId for consistent ID across devices
+        token.id = account.providerAccountId;
         token.email = user.email;
       }
       return token;
