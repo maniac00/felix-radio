@@ -97,18 +97,19 @@ export class WorkersAPIClient {
   }
 
   /**
-   * Fetch pending schedules for current time
+   * Fetch pending schedules for a time range
    */
   async fetchPendingSchedules(
-    currentTime: string,
+    timeFrom: string,
+    timeTo: string,
     currentDay: number
   ): Promise<Schedule[]> {
-    logger.debug('Fetching pending schedules', { currentTime, currentDay });
+    logger.debug('Fetching pending schedules', { timeFrom, timeTo, currentDay });
 
     const response = await this.request<{
       schedules: Schedule[];
       count: number;
-    }>(`/api/internal/schedules/pending?time=${currentTime}&day=${currentDay}`);
+    }>(`/api/internal/schedules/pending?time_from=${timeFrom}&time_to=${timeTo}&day=${currentDay}`);
 
     logger.info(`Found ${response.count} pending schedules`);
     return response.schedules;

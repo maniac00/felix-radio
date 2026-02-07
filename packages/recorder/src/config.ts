@@ -27,6 +27,9 @@ export function loadConfig(): Config {
     r2Endpoint: getEnv('R2_ENDPOINT'),
     timezone: getEnv('TZ', false) || 'Asia/Seoul',
     logLevel: getEnv('LOG_LEVEL', false) || 'info',
+    dataDir: getEnv('DATA_DIR', false) || '/data/felix-recordings',
+    retentionDays: parseInt(getEnv('RETENTION_DAYS', false) || '3', 10),
+    scheduleWindowMins: parseInt(getEnv('SCHEDULE_WINDOW_MINS', false) || '5', 10),
   };
 }
 
@@ -53,6 +56,14 @@ export function validateConfig(config: Config): void {
 
   if (!config.r2Endpoint.startsWith('https://')) {
     errors.push('R2_ENDPOINT must be a valid HTTPS URL');
+  }
+
+  if (config.retentionDays < 1 || config.retentionDays > 30) {
+    errors.push('RETENTION_DAYS must be between 1 and 30');
+  }
+
+  if (config.scheduleWindowMins < 1 || config.scheduleWindowMins > 15) {
+    errors.push('SCHEDULE_WINDOW_MINS must be between 1 and 15');
   }
 
   if (errors.length > 0) {

@@ -10,10 +10,16 @@ services:
     environment:
       - TZ=Asia/Seoul
       - NODE_ENV=production
+      - DATA_DIR=/data/felix-recordings
+      - RETENTION_DAYS=3
+      - SCHEDULE_WINDOW_MINS=5
     volumes:
-      - /tmp/felix-recordings:/tmp/felix-recordings
+      - recorder-data:/data/felix-recordings
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  recorder-data:

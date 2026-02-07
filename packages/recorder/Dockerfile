@@ -22,8 +22,8 @@ RUN pnpm build
 # Set timezone environment variable
 ENV TZ=Asia/Seoul
 
-# Create temp directory for recordings
-RUN mkdir -p /tmp/felix-recordings
+# Create persistent data directory and temp directory
+RUN mkdir -p /data/felix-recordings/audio /tmp/felix-recordings
 
 # Run the application
 CMD ["node", "dist/index.js"]

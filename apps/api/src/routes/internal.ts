@@ -18,12 +18,14 @@ internal.use('/*', apiKeyAuth);
 internal.get('/schedules/pending', async (c) => {
   const db = c.env.DB;
 
-  // Get current time from query params (sent by recorder server)
-  const currentTime = c.req.query('time'); // Format: HH:mm
+  // Support both exact time and time range queries
+  const currentTime = c.req.query('time'); // Format: HH:mm (legacy)
+  const timeFrom = c.req.query('time_from'); // Format: HH:mm (range start)
+  const timeTo = c.req.query('time_to'); // Format: HH:mm (range end)
   const currentDay = c.req.query('day'); // Day of week (0-6, Sunday=0)
 
-  if (!currentTime || !currentDay) {
-    return c.json({ error: 'time and day query parameters are required' }, 400);
+  if ((!currentTime && (!timeFrom || !timeTo)) || !currentDay) {
+    return c.json({ error: 'day and either time or time_from/time_to query parameters are required' }, 400);
   }
 
   const dayNum = parseInt(currentDay, 10);
@@ -32,22 +34,39 @@ internal.get('/schedules/pending', async (c) => {
   }
 
   try {
-    // Query schedules that:
-    // 1. Are active
-    // 2. Match the current time (start_time)
-    // 3. Include the current day in days_of_week array
-    const { results } = await db
-      .prepare(`
-        SELECT s.*, rs.stream_url, rs.name as station_name, u.email
-        FROM schedules s
-        JOIN radio_stations rs ON s.station_id = rs.id
-        JOIN users u ON s.user_id = u.id
-        WHERE s.is_active = 1
-          AND s.start_time = ?
-          AND rs.is_active = 1
-      `)
-      .bind(currentTime)
-      .all();
+    let results;
+    if (timeFrom && timeTo) {
+      // Range query: match schedules within time window
+      const resp = await db
+        .prepare(`
+          SELECT s.*, rs.stream_url, rs.name as station_name, u.email
+          FROM schedules s
+          JOIN radio_stations rs ON s.station_id = rs.id
+          JOIN users u ON s.user_id = u.id
+          WHERE s.is_active = 1
+            AND s.start_time >= ?
+            AND s.start_time <= ?
+            AND rs.is_active = 1
+        `)
+        .bind(timeFrom, timeTo)
+        .all();
+      results = resp.results;
+    } else {
+      // Exact time query (backwards compatible)
+      const resp = await db
+        .prepare(`
+          SELECT s.*, rs.stream_url, rs.name as station_name, u.email
+          FROM schedules s
+          JOIN radio_stations rs ON s.station_id = rs.id
+          JOIN users u ON s.user_id = u.id
+          WHERE s.is_active = 1
+            AND s.start_time = ?
+            AND rs.is_active = 1
+        `)
+        .bind(currentTime!)
+        .all();
+      results = resp.results;
+    }
 
     // Filter by day of week (days_of_week is JSON array string)
     const filteredSchedules = results.filter((schedule: any) => {
@@ -62,7 +81,7 @@ internal.get('/schedules/pending', async (c) => {
     return c.json({
       schedules: filteredSchedules,
       count: filteredSchedules.length,
-      current_time: currentTime,
+      current_time: currentTime || `${timeFrom}-${timeTo}`,
       current_day: dayNum,
     });
   } catch (error) {

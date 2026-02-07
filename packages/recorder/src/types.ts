@@ -54,4 +54,7 @@ export interface Config {
   r2Endpoint: string;
   timezone: string;
   logLevel: string;
+  dataDir: string; // Persistent data directory for journal + audio files
+  retentionDays: number; // Days to keep local audio files after db_synced
+  scheduleWindowMins: number; // Minutes before start_time to match schedules
 }

@@ -5,18 +5,22 @@
  * - Start recording immediately (don't wait for DB)
  * - Retry all API operations with exponential backoff
  * - Never fail recording due to DB issues
+ * - Local files preserved until db_synced + retention period
+ *
+ * State machine per journal entry:
+ * scheduled -> recording -> recorded -> uploading -> uploaded -> db_synced
  */
 
-import { mkdir, unlink } from 'fs/promises';
-import { stat } from 'fs/promises';
+import { mkdir, stat, access } from 'fs/promises';
 import { join } from 'path';
 import type { Schedule, Config, RecordingMetadata } from '../types.js';
 import { WorkersAPIClient } from '../api/client.js';
 import { R2Client } from '../storage/r2Client.js';
 import { recordStream, generateFilename } from '../recorder/ffmpeg.js';
 import { logger } from '../lib/logger.js';
+import type { Journal } from '../journal/journal.js';
+import type { JournalEntry } from '../journal/types.js';
 
-const TEMP_DIR = '/tmp/felix-recordings';
 const MAX_RETRIES = 5;
 const INITIAL_RETRY_DELAY_MS = 1000;
 
@@ -70,159 +74,217 @@ async function tryOperation<T>(
 }
 
 /**
- * Execute a recording job
- *
- * Flow (recording-first approach):
- * 1. Start ffmpeg recording IMMEDIATELY (critical path)
- * 2. Try to create DB entry (non-blocking, with retries)
- * 3. Wait for recording to complete
- * 4. Upload to R2 (with retries)
- * 5. Update/Create DB entry (with retries)
+ * Get the audio directory under dataDir
+ */
+function getAudioDir(dataDir: string): string {
+  return join(dataDir, 'audio');
+}
+
+/**
+ * Execute a new recording job: creates journal entry then processes it
  */
 export async function executeRecording(
   schedule: Schedule,
-  config: Config
+  config: Config,
+  journal: Journal
 ): Promise<void> {
-  const apiClient = new WorkersAPIClient(config);
-  const r2Client = new R2Client(config);
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
+  const key = `${schedule.id}_${dateStr}`;
+
+  // Check if already processing (dedup)
+  if (journal.hasEntry(schedule.id, dateStr)) {
+    logger.debug('Schedule already in journal, skipping', { key });
+    return;
+  }
+
+  const audioDir = getAudioDir(config.dataDir);
+  await mkdir(audioDir, { recursive: true });
+
+  const filename = generateFilename(schedule.program_name, now);
+  const localPath = join(audioDir, filename);
+  const r2Key = R2Client.getUserRecordingKey(schedule.user_id, filename);
+
+  const entry: JournalEntry = {
+    key,
+    scheduleId: schedule.id,
+    date: dateStr,
+    status: 'scheduled',
+    localPath,
+    r2Key,
+    recordingId: null,
+    schedule: {
+      userId: schedule.user_id,
+      stationId: schedule.station_id,
+      programName: schedule.program_name,
+      durationMins: schedule.duration_mins,
+      streamUrl: schedule.stream_url,
+    },
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    retryCount: 0,
+  };
+
+  await journal.addEntry(entry);
 
   logger.info('Executing recording', {
-    scheduleId: schedule.id,
+    key,
     program: schedule.program_name,
     duration: schedule.duration_mins,
   });
 
-  // Ensure temp directory exists
-  await mkdir(TEMP_DIR, { recursive: true });
+  await processEntry(entry, config, journal);
+}
 
-  // Generate filename and paths
-  const now = new Date();
-  const filename = generateFilename(schedule.program_name, now);
-  const outputPath = join(TEMP_DIR, filename);
-  const r2Key = R2Client.getUserRecordingKey(schedule.user_id, filename);
-
-  // Prepare recording metadata
-  const metadata: RecordingMetadata = {
-    user_id: schedule.user_id,
-    schedule_id: schedule.id,
-    station_id: schedule.station_id,
-    program_name: schedule.program_name,
-    recorded_at: now.toISOString(),
-    duration_secs: schedule.duration_mins * 60,
-    file_size_bytes: 0,
-    audio_file_path: r2Key,
-    status: 'recording',
-  };
-
-  let recordingId: number | null = null;
-
-  // 1. START RECORDING IMMEDIATELY (this is the critical path)
-  logger.info('Starting recording immediately', { filename });
-  const recordingPromise = recordStream({
-    streamUrl: schedule.stream_url,
-    durationSecs: schedule.duration_mins * 60,
-    outputPath,
-  });
-
-  // 2. Try to create DB entry in parallel (non-blocking)
-  // Even if this fails, the recording continues
-  const dbCreatePromise = tryOperation(
-    () => apiClient.createRecording(metadata),
-    'DB recording creation',
-    null as number | null
-  ).then(id => {
-    recordingId = id;
-    if (id) {
-      logger.info('DB recording entry created', { recordingId: id });
-    } else {
-      logger.warn('DB recording entry creation failed, will create after recording');
-    }
-    return id;
-  });
+/**
+ * Process a journal entry from its current state.
+ * This is the core state machine - can resume from any intermediate state.
+ */
+export async function processEntry(
+  entry: JournalEntry,
+  config: Config,
+  journal: Journal
+): Promise<void> {
+  const apiClient = new WorkersAPIClient(config);
+  const r2Client = new R2Client(config);
 
   try {
-    // 3. Wait for recording to complete (this is the main wait)
-    await recordingPromise;
+    // Phase: scheduled -> recording
+    if (entry.status === 'scheduled') {
+      await journal.updateEntry(entry.key, { status: 'recording' });
+      entry.status = 'recording';
 
-    // Get file size
-    const fileStats = await stat(outputPath);
-    logger.info('Recording completed', { filename, size: fileStats.size });
+      // Start recording immediately
+      logger.info('Starting recording', { key: entry.key, localPath: entry.localPath });
 
-    // 4. Upload to R2 (with retries - this is critical for data preservation)
-    await withRetry(
-      () => r2Client.uploadFile(outputPath, r2Key),
-      'R2 upload'
-    );
-    logger.info('File uploaded to R2', { r2Key, size: fileStats.size });
+      const recordingPromise = recordStream({
+        streamUrl: entry.schedule.streamUrl,
+        durationSecs: entry.schedule.durationMins * 60,
+        outputPath: entry.localPath,
+      });
 
-    // Wait for DB create to finish (if still pending)
-    await dbCreatePromise;
+      // Try to create DB entry in parallel (non-blocking)
+      const metadata: RecordingMetadata = {
+        user_id: entry.schedule.userId,
+        schedule_id: entry.scheduleId,
+        station_id: entry.schedule.stationId,
+        program_name: entry.schedule.programName,
+        recorded_at: entry.createdAt,
+        duration_secs: entry.schedule.durationMins * 60,
+        file_size_bytes: 0,
+        audio_file_path: entry.r2Key,
+        status: 'recording',
+      };
 
-    // 5. Update or create DB entry
-    if (recordingId) {
-      // DB entry exists, update status
-      await tryOperation(
-        () => apiClient.updateRecordingStatus(recordingId!, 'completed', undefined, fileStats.size),
-        'DB status update',
-        undefined
-      );
-    } else {
-      // DB entry doesn't exist, create it with completed status
-      metadata.status = 'completed';
-      metadata.file_size_bytes = fileStats.size;
-
-      const newId = await tryOperation(
+      const dbPromise = tryOperation(
         () => apiClient.createRecording(metadata),
-        'DB recording creation (post-upload)',
+        'DB recording creation',
         null as number | null
-      );
+      ).then(async id => {
+        if (id) {
+          entry.recordingId = id;
+          await journal.updateEntry(entry.key, { recordingId: id });
+          logger.info('DB recording entry created', { key: entry.key, recordingId: id });
+        }
+        return id;
+      });
 
-      if (newId) {
-        recordingId = newId;
-        logger.info('DB recording entry created after upload', { recordingId: newId });
-      } else {
-        // Even DB creation failed, but file is safely in R2
-        logger.error('Failed to create DB entry, but file is saved in R2', {
-          r2Key,
-          fileSize: fileStats.size,
-          metadata,
-        });
-      }
+      // Wait for recording to complete
+      await recordingPromise;
+      await dbPromise; // Wait for DB attempt too
+
+      await journal.updateEntry(entry.key, { status: 'recorded' });
+      entry.status = 'recorded';
+
+      logger.info('Recording completed', { key: entry.key });
     }
 
-    logger.info('Recording job completed successfully', {
-      recordingId,
-      filename,
-      r2Key,
-    });
+    // Phase: recorded -> uploading -> uploaded
+    if (entry.status === 'recorded' || entry.status === 'uploading') {
+      // Verify local file exists
+      await access(entry.localPath);
+      const fileStats = await stat(entry.localPath);
 
+      await journal.updateEntry(entry.key, { status: 'uploading' });
+      entry.status = 'uploading';
+
+      logger.info('Uploading to R2', { key: entry.key, size: fileStats.size });
+
+      await withRetry(
+        () => r2Client.uploadFile(entry.localPath, entry.r2Key),
+        'R2 upload'
+      );
+
+      await journal.updateEntry(entry.key, { status: 'uploaded' });
+      entry.status = 'uploaded';
+
+      logger.info('Uploaded to R2', { key: entry.key, r2Key: entry.r2Key });
+    }
+
+    // Phase: uploaded -> db_synced
+    if (entry.status === 'uploaded') {
+      const fileStats = await stat(entry.localPath);
+
+      if (entry.recordingId) {
+        // Update existing DB entry
+        await withRetry(
+          () => apiClient.updateRecordingStatus(
+            entry.recordingId!,
+            'completed',
+            undefined,
+            fileStats.size
+          ),
+          'DB status update'
+        );
+      } else {
+        // Create DB entry with completed status
+        const metadata: RecordingMetadata = {
+          user_id: entry.schedule.userId,
+          schedule_id: entry.scheduleId,
+          station_id: entry.schedule.stationId,
+          program_name: entry.schedule.programName,
+          recorded_at: entry.createdAt,
+          duration_secs: entry.schedule.durationMins * 60,
+          file_size_bytes: fileStats.size,
+          audio_file_path: entry.r2Key,
+          status: 'completed',
+        };
+
+        const newId = await withRetry(
+          () => apiClient.createRecording(metadata),
+          'DB recording creation (post-upload)'
+        );
+        entry.recordingId = newId;
+        await journal.updateEntry(entry.key, { recordingId: newId });
+      }
+
+      await journal.updateEntry(entry.key, { status: 'db_synced' });
+      entry.status = 'db_synced';
+
+      logger.info('Recording job fully completed', {
+        key: entry.key,
+        recordingId: entry.recordingId,
+      });
+    }
   } catch (error) {
-    logger.error('Recording job failed', {
-      scheduleId: schedule.id,
-      error,
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    logger.error('Recording job failed', { key: entry.key, status: entry.status, error: message });
+
+    await journal.updateEntry(entry.key, {
+      status: 'failed',
+      errorMessage: message,
+      retryCount: entry.retryCount + 1,
     });
 
-    // Try to update DB status to failed (if we have a recording ID)
-    if (recordingId) {
+    // Try to update DB status to failed
+    if (entry.recordingId) {
       await tryOperation(
-        () => apiClient.updateRecordingStatus(
-          recordingId!,
-          'failed',
-          error instanceof Error ? error.message : 'Unknown error'
-        ),
+        () => apiClient.updateRecordingStatus(entry.recordingId!, 'failed', message),
         'DB failure status update',
         undefined
       );
     }
 
     throw error;
-  } finally {
-    // Clean up temp file
-    try {
-      await unlink(outputPath);
-      logger.debug('Temp file deleted', { outputPath });
-    } catch (error) {
-      logger.warn('Failed to delete temp file', { outputPath, error });
-    }
   }
 }
