@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import { AudioPlayer } from '@/components/recordings/audio-player';
 import {
   ArrowLeft,
@@ -138,6 +137,19 @@ export default function RecordingDetailPage() {
     }
   };
 
+  const handleDownloadSTT = () => {
+    const blob = new Blob([sttText], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${recording.program_name}_stt.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('다운로드를 시작합니다');
+  };
+
   const handleDownload = async () => {
     try {
       const url = await apiClient.getRecordingDownloadUrl(recordingId);
@@ -223,7 +235,7 @@ export default function RecordingDetailPage() {
             <CardContent>
               {sttText ? (
                 <div className="space-y-3">
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -241,12 +253,18 @@ export default function RecordingDetailPage() {
                         </>
                       )}
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDownloadSTT}
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      다운로드 (.txt)
+                    </Button>
                   </div>
-                  <Textarea
-                    value={sttText}
-                    readOnly
-                    className="min-h-[400px] font-mono text-sm"
-                  />
+                  <div className="max-h-[500px] overflow-y-auto border rounded-md p-4 bg-gray-50 font-mono text-sm whitespace-pre-wrap leading-relaxed">
+                    {sttText}
+                  </div>
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-500">

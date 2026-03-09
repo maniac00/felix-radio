@@ -40,6 +40,7 @@ export interface STTJob {
   audio_file_path: string;
   user_id: string;
   program_name: string;
+  recorded_at: string; // ISO 8601 - needed for timestamp calculation
 }
 
 export interface Config {

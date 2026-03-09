@@ -13,10 +13,11 @@
 
 import { mkdir, stat, access } from 'fs/promises';
 import { join } from 'path';
-import type { Schedule, Config, RecordingMetadata } from '../types.js';
+import type { Schedule, Config, RecordingMetadata, STTJob } from '../types.js';
 import { WorkersAPIClient } from '../api/client.js';
 import { R2Client } from '../storage/r2Client.js';
 import { recordStream, generateFilename } from '../recorder/ffmpeg.js';
+import { processSTTJob } from '../stt/processor.js';
 import { logger } from '../lib/logger.js';
 import type { Journal } from '../journal/journal.js';
 import type { JournalEntry } from '../journal/types.js';
@@ -27,7 +28,7 @@ const INITIAL_RETRY_DELAY_MS = 1000;
 /**
  * Retry a function with exponential backoff
  */
-async function withRetry<T>(
+export async function withRetry<T>(
   fn: () => Promise<T>,
   operationName: string,
   maxRetries: number = MAX_RETRIES
@@ -58,7 +59,7 @@ async function withRetry<T>(
 /**
  * Try an operation but don't throw on failure
  */
-async function tryOperation<T>(
+export async function tryOperation<T>(
   fn: () => Promise<T>,
   operationName: string,
   defaultValue: T
@@ -265,6 +266,42 @@ export async function processEntry(
         key: entry.key,
         recordingId: entry.recordingId,
       });
+    }
+
+    // Phase: db_synced -> stt_processing -> stt_completed (best-effort)
+    if (entry.status === 'db_synced' && entry.recordingId) {
+      await journal.updateEntry(entry.key, { status: 'stt_processing' });
+      entry.status = 'stt_processing';
+
+      const sttJob: STTJob = {
+        recording_id: entry.recordingId,
+        audio_file_path: entry.r2Key,
+        user_id: entry.schedule.userId,
+        program_name: entry.schedule.programName,
+        recorded_at: entry.createdAt,
+      };
+
+      let sttSuccess = false;
+      try {
+        await processSTTJob(sttJob, config, entry.localPath);
+        sttSuccess = true;
+      } catch (sttError) {
+        logger.error('STT processing failed', {
+          key: entry.key,
+          error: sttError instanceof Error ? sttError.message : String(sttError),
+        });
+      }
+
+      if (sttSuccess) {
+        await journal.updateEntry(entry.key, { status: 'stt_completed' });
+        entry.status = 'stt_completed';
+        logger.info('STT completed', { key: entry.key });
+      } else {
+        // STT failed but recording is safe - revert to db_synced
+        await journal.updateEntry(entry.key, { status: 'db_synced' });
+        entry.status = 'db_synced';
+        logger.warn('STT failed, recording preserved', { key: entry.key });
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

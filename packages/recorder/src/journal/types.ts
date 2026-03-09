@@ -9,6 +9,8 @@ export type JournalStatus =
   | 'uploading'
   | 'uploaded'
   | 'db_synced'
+  | 'stt_processing'
+  | 'stt_completed'
   | 'failed';
 
 export interface JournalEntry {

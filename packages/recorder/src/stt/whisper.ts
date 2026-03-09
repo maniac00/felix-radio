@@ -8,6 +8,20 @@ import { stat } from 'fs/promises';
 import type { Config } from '../types.js';
 import { logger } from '../lib/logger.js';
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000; // UTC+9
+
+/**
+ * Format a UTC timestamp + offset into KST (HH:mm:ss) string
+ */
+function formatKSTTime(recordedAtISO: string, offsetSecs: number): string {
+  const baseTime = new Date(recordedAtISO).getTime();
+  const actualTime = new Date(baseTime + offsetSecs * 1000 + KST_OFFSET_MS);
+  const h = String(actualTime.getUTCHours()).padStart(2, '0');
+  const m = String(actualTime.getUTCMinutes()).padStart(2, '0');
+  const s = String(actualTime.getUTCSeconds()).padStart(2, '0');
+  return `(${h}:${m}:${s})`;
+}
+
 export class WhisperClient {
   private client: OpenAI;
 
@@ -18,35 +32,39 @@ export class WhisperClient {
   }
 
   /**
-   * Convert audio file to text using Whisper API
+   * Validate audio file size (Whisper 25MB limit)
+   */
+  private async validateFileSize(audioFilePath: string): Promise<void> {
+    const fileStats = await stat(audioFilePath);
+    const fileSizeMB = fileStats.size / (1024 * 1024);
+
+    if (fileSizeMB > 25) {
+      throw new Error(
+        `File size ${fileSizeMB.toFixed(2)}MB exceeds Whisper API limit of 25MB`
+      );
+    }
+
+    logger.debug('Audio file stats', {
+      size: fileStats.size,
+      sizeMB: fileSizeMB.toFixed(2),
+    });
+  }
+
+  /**
+   * Convert audio file to plain text using Whisper API
    */
   async convertToText(audioFilePath: string): Promise<string> {
     logger.info('Converting audio to text with Whisper', { audioFilePath });
 
     try {
-      // Check file size (Whisper has 25MB limit)
-      const fileStats = await stat(audioFilePath);
-      const fileSizeMB = fileStats.size / (1024 * 1024);
+      await this.validateFileSize(audioFilePath);
 
-      if (fileSizeMB > 25) {
-        throw new Error(
-          `File size ${fileSizeMB.toFixed(2)}MB exceeds Whisper API limit of 25MB`
-        );
-      }
-
-      logger.debug('Audio file stats', {
-        size: fileStats.size,
-        sizeMB: fileSizeMB.toFixed(2),
-      });
-
-      // Create file stream
       const fileStream = createReadStream(audioFilePath);
 
-      // Call Whisper API
       const transcription = await this.client.audio.transcriptions.create({
         file: fileStream as any,
         model: 'whisper-1',
-        language: 'ko', // Korean
+        language: 'ko',
         response_format: 'text',
       });
 
@@ -55,6 +73,62 @@ export class WhisperClient {
       });
 
       return transcription;
+    } catch (error) {
+      logger.error('Whisper API failed', { audioFilePath, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Convert audio file to timestamped text using Whisper API verbose_json.
+   * Each segment is prefixed with actual clock time in KST (24h format).
+   * Example output: "(14:38:45) 오늘의 뉴스는..."
+   *
+   * @param audioFilePath - Path to local audio file
+   * @param recordedAt - ISO 8601 UTC timestamp of when recording started
+   */
+  async convertToTimestampedText(
+    audioFilePath: string,
+    recordedAt: string
+  ): Promise<string> {
+    logger.info('Converting audio to timestamped text with Whisper', {
+      audioFilePath,
+      recordedAt,
+    });
+
+    try {
+      await this.validateFileSize(audioFilePath);
+
+      const fileStream = createReadStream(audioFilePath);
+
+      const transcription = await this.client.audio.transcriptions.create({
+        file: fileStream as any,
+        model: 'whisper-1',
+        language: 'ko',
+        response_format: 'verbose_json',
+      });
+
+      const segments = transcription.segments ?? [];
+
+      if (segments.length === 0) {
+        logger.warn('No segments returned from Whisper API');
+        return '';
+      }
+
+      const lines = segments.map((segment) => {
+        const timestamp = formatKSTTime(recordedAt, segment.start);
+        const text = segment.text.trim();
+        return `${timestamp} ${text}`;
+      });
+
+      const result = lines.join('\n');
+
+      logger.info('Timestamped transcription completed', {
+        segments: segments.length,
+        textLength: result.length,
+      });
+
+      return result;
     } catch (error) {
       logger.error('Whisper API failed', { audioFilePath, error });
       throw error;

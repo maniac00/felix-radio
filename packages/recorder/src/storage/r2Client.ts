@@ -90,6 +90,32 @@ export class R2Client {
   }
 
   /**
+   * Upload text content directly to R2
+   */
+  async uploadText(content: string, r2Key: string): Promise<void> {
+    logger.info('Uploading text to R2', { r2Key });
+
+    try {
+      const body = Buffer.from(content, 'utf-8');
+
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucketName,
+          Key: r2Key,
+          Body: body,
+          ContentType: 'text/plain; charset=utf-8',
+          ContentLength: body.length,
+        })
+      );
+
+      logger.info('Text uploaded successfully', { r2Key, size: body.length });
+    } catch (error) {
+      logger.error('Failed to upload text to R2', { r2Key, error });
+      throw error;
+    }
+  }
+
+  /**
    * Generate R2 key for user recording
    */
   static getUserRecordingKey(userId: string, filename: string): string {
