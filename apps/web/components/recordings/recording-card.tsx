@@ -156,6 +156,14 @@ export function RecordingCard({ recording, onDownload, onDelete }: RecordingCard
                 </AlertDialogContent>
               </AlertDialog>
             )}
+            {recording.stt_status === 'completed' && (
+              <Link href={`/dashboard/recordings/${recording.id}`}>
+                <Button variant="outline" size="sm">
+                  <FileText className="w-4 h-4 mr-2" />
+                  스크립트 보기
+                </Button>
+              </Link>
+            )}
             {recording.status === 'completed' && (
               <Button
                 variant="outline"
