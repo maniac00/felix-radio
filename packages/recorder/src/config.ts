@@ -20,6 +20,7 @@ export function loadConfig(): Config {
     workersApiUrlFallback: getEnv('WORKERS_API_URL_FALLBACK'),
     internalApiKey: getEnv('INTERNAL_API_KEY'),
     openaiApiKey: getEnv('OPENAI_API_KEY'),
+    transcriptionModel: getEnv('TRANSCRIPTION_MODEL', false) || 'gpt-4o-mini-transcribe',
     r2AccountId: getEnv('R2_ACCOUNT_ID'),
     r2AccessKeyId: getEnv('R2_ACCESS_KEY_ID'),
     r2SecretAccessKey: getEnv('R2_SECRET_ACCESS_KEY'),

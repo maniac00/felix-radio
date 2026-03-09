@@ -8,6 +8,20 @@ import { stat } from 'fs/promises';
 import type { Config } from '../types.js';
 import { logger } from '../lib/logger.js';
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000; // UTC+9
+
+/**
+ * Format a UTC timestamp + offset into KST (HH:mm:ss) string
+ */
+function formatKSTTime(recordedAtISO: string, offsetSecs: number): string {
+  const baseTime = new Date(recordedAtISO).getTime();
+  const actualTime = new Date(baseTime + offsetSecs * 1000 + KST_OFFSET_MS);
+  const h = String(actualTime.getUTCHours()).padStart(2, '0');
+  const m = String(actualTime.getUTCMinutes()).padStart(2, '0');
+  const s = String(actualTime.getUTCSeconds()).padStart(2, '0');
+  return `(${h}:${m}:${s})`;
+}
+
 /**
  * Convert OpenAI API errors to user-friendly messages
  */
@@ -23,33 +37,21 @@ function toUserError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000; // UTC+9
-
-/**
- * Format a UTC timestamp + offset into KST (HH:mm:ss) string
- */
-function formatKSTTime(recordedAtISO: string, offsetSecs: number): string {
-  const baseTime = new Date(recordedAtISO).getTime();
-  const actualTime = new Date(baseTime + offsetSecs * 1000 + KST_OFFSET_MS);
-  const h = String(actualTime.getUTCHours()).padStart(2, '0');
-  const m = String(actualTime.getUTCMinutes()).padStart(2, '0');
-  const s = String(actualTime.getUTCSeconds()).padStart(2, '0');
-  return `(${h}:${m}:${s})`;
-}
-
 export class WhisperClient {
   private client: OpenAI;
+  private model: string;
 
   constructor(config: Config) {
     this.client = new OpenAI({
       apiKey: config.openaiApiKey,
     });
+    this.model = config.transcriptionModel;
   }
 
   /**
    * Validate audio file size (Whisper 25MB limit)
    */
-  private async validateFileSize(audioFilePath: string): Promise<void> {
+  private async validateFileSize(audioFilePath: string): Promise<number> {
     const fileStats = await stat(audioFilePath);
     const fileSizeMB = fileStats.size / (1024 * 1024);
 
@@ -63,13 +65,15 @@ export class WhisperClient {
       size: fileStats.size,
       sizeMB: fileSizeMB.toFixed(2),
     });
+
+    return fileStats.size;
   }
 
   /**
    * Convert audio file to plain text using Whisper API
    */
   async convertToText(audioFilePath: string): Promise<string> {
-    logger.info('Converting audio to text with Whisper', { audioFilePath });
+    logger.info('Converting audio to text', { audioFilePath, model: this.model });
 
     try {
       await this.validateFileSize(audioFilePath);
@@ -78,7 +82,7 @@ export class WhisperClient {
 
       const transcription = await this.client.audio.transcriptions.create({
         file: fileStream as any,
-        model: 'whisper-1',
+        model: this.model,
         language: 'ko',
         response_format: 'text',
       });
@@ -95,51 +99,26 @@ export class WhisperClient {
   }
 
   /**
-   * Convert audio file to timestamped text using Whisper API verbose_json.
-   * Each segment is prefixed with actual clock time in KST (24h format).
-   * Example output: "(14:38:45) 오늘의 뉴스는..."
-   *
-   * @param audioFilePath - Path to local audio file
-   * @param recordedAt - ISO 8601 UTC timestamp of when recording started
+   * Convert a single audio file (must be ≤25MB) to timestamped text.
+   * For files >25MB, use transcribeChunk() with audio splitting.
    */
   async convertToTimestampedText(
     audioFilePath: string,
     recordedAt: string
   ): Promise<string> {
-    logger.info('Converting audio to timestamped text with Whisper', {
+    logger.info('Converting audio to timestamped text', {
       audioFilePath,
       recordedAt,
+      model: this.model,
     });
 
     try {
       await this.validateFileSize(audioFilePath);
-
-      const fileStream = createReadStream(audioFilePath);
-
-      const transcription = await this.client.audio.transcriptions.create({
-        file: fileStream as any,
-        model: 'whisper-1',
-        language: 'ko',
-        response_format: 'verbose_json',
-      });
-
-      const segments = transcription.segments ?? [];
-
-      if (segments.length === 0) {
-        logger.warn('No segments returned from Whisper API');
-        return '';
-      }
-
-      const lines = segments.map((segment) => {
-        const timestamp = formatKSTTime(recordedAt, segment.start);
-        const text = segment.text.trim();
-        return `${timestamp} ${text}`;
-      });
-
+      const lines = await this.transcribeChunk(audioFilePath, recordedAt, 0);
       const result = lines.join('\n');
 
       logger.info('Timestamped transcription completed', {
-        segments: segments.length,
+        lines: lines.length,
         textLength: result.length,
       });
 
@@ -148,5 +127,55 @@ export class WhisperClient {
       logger.error('Whisper API failed', { audioFilePath, error });
       throw toUserError(error);
     }
+  }
+
+  /**
+   * Transcribe a single audio chunk and return formatted lines.
+   * Each line: "(HH:mm:ss) text"
+   *
+   * @param audioFilePath - Path to audio chunk (must be ≤25MB)
+   * @param recordedAt - ISO 8601 UTC timestamp of original recording start
+   * @param chunkStartOffsetSecs - Offset in seconds from recording start to chunk start
+   */
+  async transcribeChunk(
+    audioFilePath: string,
+    recordedAt: string,
+    chunkStartOffsetSecs: number
+  ): Promise<string[]> {
+    logger.info('Transcribing chunk', {
+      audioFilePath,
+      chunkStartOffsetSecs,
+      model: this.model,
+    });
+
+    const fileStream = createReadStream(audioFilePath);
+
+    const transcription = await this.client.audio.transcriptions.create({
+      file: fileStream as any,
+      model: this.model,
+      language: 'ko',
+      response_format: 'verbose_json',
+    });
+
+    const segments = transcription.segments ?? [];
+
+    if (segments.length === 0) {
+      logger.warn('No segments returned from API');
+      return [];
+    }
+
+    const lines = segments.map((segment) => {
+      const adjustedOffset = chunkStartOffsetSecs + segment.start;
+      const timestamp = formatKSTTime(recordedAt, adjustedOffset);
+      const text = segment.text.trim();
+      return `${timestamp} ${text}`;
+    });
+
+    logger.info('Chunk transcription completed', {
+      segments: segments.length,
+      chunkStartOffsetSecs,
+    });
+
+    return lines;
   }
 }

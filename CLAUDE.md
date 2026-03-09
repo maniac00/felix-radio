@@ -34,10 +34,16 @@ cd packages/recorder && pnpm docker:build
 cd packages/recorder && pnpm docker:run
 
 # Deploy
-cd apps/api && pnpm deploy             # Cloudflare Workers
-cd apps/web && pnpm deploy             # Cloudflare Pages
-./scripts/deploy-production.sh         # Full production deploy
+cd apps/api && npx wrangler deploy     # API → Cloudflare Workers
+cd apps/web && npx vercel --prod --yes # Web → Vercel
+./scripts/deploy-production.sh         # Full production deploy (API + Web + Recorder VPS)
 ```
+
+## Production URLs
+
+- **Web**: https://felix-radio-web-i3da.vercel.app
+- **API**: https://felix-radio-api.7wario.workers.dev
+- **Recorder VPS**: 158.247.206.183 (Vultr Seoul, Docker)
 
 ## Architecture
 
@@ -45,13 +51,13 @@ cd apps/web && pnpm deploy             # Cloudflare Pages
 
 ### System Overview
 ```
-Cloudflare Pages (Next.js) ←JWT→ Cloudflare Workers (Hono) ←→ D1 + R2
-                                        ↑ API Key
-                                   Vultr VPS (Node.js recorder + ffmpeg)
+Vercel (Next.js) ←JWT→ Cloudflare Workers (Hono) ←→ D1 + R2
+                                ↑ API Key
+                           Vultr VPS (Node.js recorder + ffmpeg)
 ```
 
 ### apps/web — Next.js 15 Frontend
-- Deployed to Cloudflare Pages, uses App Router
+- Deployed to Vercel, uses App Router
 - Auth: NextAuth 5 beta with Google OAuth + JWT
 - UI: shadcn/ui (Radix UI + Tailwind CSS 4)
 - API client: `lib/api.ts` (ApiClient class, Bearer JWT auth)
@@ -69,7 +75,7 @@ Cloudflare Pages (Next.js) ←JWT→ Cloudflare Workers (Hono) ←→ D1 + R2
 - Polls `/api/internal/schedules/pending` every 1 minute via node-cron
 - Records HLS streams with ffmpeg → uploads MP3 to R2 → creates DB entry
 - STT: OpenAI Whisper API, uploads text to R2
-- Journal-based state tracking (`{dataDir}/journal.json`): `scheduled → recording → recorded → uploading → uploaded → db_synced`
+- Journal-based state tracking (`{dataDir}/journal.json`): `scheduled → recording → recorded → uploading → uploaded → db_synced → stt_processing → stt_completed`
 - Schedule matching uses configurable time window (default 5 min)
 - `withRetry()` for critical ops, `tryOperation()` for non-blocking ones
 - R2 paths: `users/{user_id}/recordings/{filename}.mp3`

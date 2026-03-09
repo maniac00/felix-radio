@@ -48,6 +48,7 @@ export interface Config {
   workersApiUrlFallback: string; // Production (required, always available)
   internalApiKey: string;
   openaiApiKey: string;
+  transcriptionModel: string; // 'gpt-4o-mini-transcribe' | 'whisper-1'
   r2AccountId: string;
   r2AccessKeyId: string;
   r2SecretAccessKey: string;

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { AudioPlayer } from '@/components/recordings/audio-player';
+import { AudioPlayer, AudioPlayerRef } from '@/components/recordings/audio-player';
+import { STTTranscript } from '@/components/recordings/stt-transcript';
 import {
   ArrowLeft,
   Download,
@@ -30,6 +31,7 @@ export default function RecordingDetailPage() {
   const router = useRouter();
   const recordingId = parseInt(params.id as string);
 
+  const playerRef = useRef<AudioPlayerRef>(null);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isConverting, setIsConverting] = useState(false);
@@ -202,6 +204,7 @@ export default function RecordingDetailPage() {
           {/* Audio Player */}
           {recording.status === 'completed' && audioUrl && (
             <AudioPlayer
+              ref={playerRef}
               src={audioUrl}
               title={recording.program_name}
             />
@@ -262,9 +265,11 @@ export default function RecordingDetailPage() {
                       다운로드 (.txt)
                     </Button>
                   </div>
-                  <div className="max-h-[500px] overflow-y-auto border rounded-md p-4 bg-gray-50 font-mono text-sm whitespace-pre-wrap leading-relaxed">
-                    {sttText}
-                  </div>
+                  <STTTranscript
+                    text={sttText}
+                    recordedAt={recording.recorded_at}
+                    onSeek={(s) => playerRef.current?.seekTo(s)}
+                  />
                 </div>
               ) : (
                 <div className="text-center py-12 text-gray-500">

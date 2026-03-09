@@ -1,22 +1,22 @@
 /**
- * STT job processor - converts audio recordings to timestamped text
+ * STT job processor - converts audio recordings to timestamped text.
+ * Handles large files by splitting into chunks for Whisper API's 25MB limit.
  */
 
-import { access } from 'fs/promises';
+import { access, stat, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { STTJob, Config } from '../types.js';
 import { WhisperClient } from './whisper.js';
+import { splitAudioFile, cleanupChunks } from './chunker.js';
 import { R2Client } from '../storage/r2Client.js';
 import { WorkersAPIClient } from '../api/client.js';
 import { withRetry } from '../scheduler/executor.js';
 import { logger } from '../lib/logger.js';
 
+const MAX_SINGLE_FILE_MB = 20; // Files larger than this get chunked
+
 /**
  * Process an STT job: convert audio to timestamped text, upload to R2, update DB.
- *
- * @param job - STT job with recording info
- * @param config - Application config
- * @param localAudioPath - Path to local audio file (may already exist after recording)
  */
 export async function processSTTJob(
   job: STTJob,
@@ -43,7 +43,6 @@ export async function processSTTJob(
         r2Key: job.audio_file_path,
       });
       const tempDir = join(config.dataDir, 'stt-temp');
-      const { mkdir } = await import('fs/promises');
       await mkdir(tempDir, { recursive: true });
       audioPath = join(tempDir, `${job.recording_id}.mp3`);
       await withRetry(
@@ -52,13 +51,56 @@ export async function processSTTJob(
       );
     }
 
-    // Convert audio to timestamped text
-    logger.info('Starting STT conversion', { recordingId: job.recording_id });
-    const text = await withRetry(
-      () => whisper.convertToTimestampedText(audioPath, job.recorded_at),
-      'Whisper STT conversion',
-      2 // fewer retries for Whisper API (expensive)
-    );
+    // Check file size to decide processing strategy
+    const fileStats = await stat(audioPath);
+    const fileSizeMB = fileStats.size / (1024 * 1024);
+
+    let text: string;
+
+    if (fileSizeMB <= MAX_SINGLE_FILE_MB) {
+      // Small file: single Whisper API call
+      logger.info('Processing small file directly', {
+        recordingId: job.recording_id,
+        sizeMB: fileSizeMB.toFixed(1),
+      });
+      text = await withRetry(
+        () => whisper.convertToTimestampedText(audioPath, job.recorded_at),
+        'Whisper STT conversion',
+        2
+      );
+    } else {
+      // Large file: split into chunks and process each
+      logger.info('Processing large file with chunking', {
+        recordingId: job.recording_id,
+        sizeMB: fileSizeMB.toFixed(1),
+      });
+
+      const chunkDir = join(config.dataDir, 'stt-chunks', String(job.recording_id));
+      const chunks = await splitAudioFile(audioPath, chunkDir);
+
+      try {
+        const allLines: string[] = [];
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+          logger.info(`Processing chunk ${i + 1}/${chunks.length}`, {
+            recordingId: job.recording_id,
+            startOffsetSecs: chunk.startOffsetSecs,
+          });
+
+          const lines = await withRetry(
+            () => whisper.transcribeChunk(chunk.path, job.recorded_at, chunk.startOffsetSecs),
+            `Whisper chunk ${i + 1}/${chunks.length}`,
+            2
+          );
+          allLines.push(...lines);
+        }
+
+        text = allLines.join('\n');
+      } finally {
+        await cleanupChunks(chunks);
+      }
+    }
 
     if (!text) {
       throw new Error('Whisper returned empty transcription');
