@@ -2,11 +2,26 @@
  * OpenAI Whisper API client for speech-to-text conversion
  */
 
-import OpenAI from 'openai';
+import OpenAI, { APIError } from 'openai';
 import { createReadStream } from 'fs';
 import { stat } from 'fs/promises';
 import type { Config } from '../types.js';
 import { logger } from '../lib/logger.js';
+
+/**
+ * Convert OpenAI API errors to user-friendly messages
+ */
+function toUserError(error: unknown): Error {
+  if (error instanceof APIError) {
+    if (error.code === 'insufficient_quota' || error.status === 429) {
+      return new Error('AI 서비스 오류. 관리자 문의');
+    }
+    if (error.code === 'invalid_api_key' || error.status === 401) {
+      return new Error('AI 서비스 오류. 관리자 문의');
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000; // UTC+9
 
@@ -75,7 +90,7 @@ export class WhisperClient {
       return transcription;
     } catch (error) {
       logger.error('Whisper API failed', { audioFilePath, error });
-      throw error;
+      throw toUserError(error);
     }
   }
 
@@ -131,7 +146,7 @@ export class WhisperClient {
       return result;
     } catch (error) {
       logger.error('Whisper API failed', { audioFilePath, error });
-      throw error;
+      throw toUserError(error);
     }
   }
 }

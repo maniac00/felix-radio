@@ -1,15 +1,20 @@
 #!/bin/bash
 set -e
 
-echo "🚀 Felix Radio - Production Deployment Script"
-echo "=============================================="
-echo ""
+# Felix Radio - Production Deployment Script
+# Deploys all 3 services: API (Cloudflare Workers), Web (Vercel), Recorder (Vultr VPS Docker)
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+NC='\033[0m'
+
+# Configuration
+WORKER_URL="https://felix-radio-api.7wario.workers.dev"
+VPS_HOST="158.247.206.183"
+VPS_USER="root"
+RECORDER_DIR="/root/felix-radio/packages/recorder"
 
 # Check if running from project root
 if [ ! -f "pnpm-workspace.yaml" ]; then
@@ -17,34 +22,42 @@ if [ ! -f "pnpm-workspace.yaml" ]; then
   exit 1
 fi
 
-echo -e "${YELLOW}This script will deploy Felix Radio to production.${NC}"
-echo -e "${YELLOW}Make sure you have completed the prerequisites in docs/DEPLOYMENT.md${NC}"
+echo "Felix Radio - Production Deployment"
+echo "===================================="
 echo ""
-read -p "Continue? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  exit 1
-fi
 
-echo ""
+# Parse arguments
+SKIP_API=false
+SKIP_WEB=false
+SKIP_RECORDER=false
+
+for arg in "$@"; do
+  case $arg in
+    --skip-api) SKIP_API=true ;;
+    --skip-web) SKIP_WEB=true ;;
+    --skip-recorder) SKIP_RECORDER=true ;;
+    --api-only) SKIP_WEB=true; SKIP_RECORDER=true ;;
+    --web-only) SKIP_API=true; SKIP_RECORDER=true ;;
+    --recorder-only) SKIP_API=true; SKIP_WEB=true ;;
+    --help)
+      echo "Usage: ./scripts/deploy-production.sh [options]"
+      echo ""
+      echo "Options:"
+      echo "  --skip-api        Skip API deployment"
+      echo "  --skip-web        Skip Web deployment"
+      echo "  --skip-recorder   Skip Recorder deployment"
+      echo "  --api-only        Deploy API only"
+      echo "  --web-only        Deploy Web only"
+      echo "  --recorder-only   Deploy Recorder only"
+      exit 0
+      ;;
+  esac
+done
+
+# ── Step 1: Prerequisites ──────────────────────────────────────────
+
 echo "Step 1: Checking prerequisites..."
 echo "-----------------------------------"
-
-# Check wrangler is installed
-if ! command -v wrangler &> /dev/null; then
-  echo -e "${RED}Error: wrangler CLI not found${NC}"
-  echo "Install with: npm install -g wrangler"
-  exit 1
-fi
-echo -e "${GREEN}✓ Wrangler CLI found${NC}"
-
-# Check wrangler is logged in
-if ! wrangler whoami &> /dev/null; then
-  echo -e "${RED}Error: Not logged in to Cloudflare${NC}"
-  echo "Login with: wrangler login"
-  exit 1
-fi
-echo -e "${GREEN}✓ Logged in to Cloudflare${NC}"
 
 # Check git status
 if [ -n "$(git status --porcelain)" ]; then
@@ -54,110 +67,134 @@ if [ -n "$(git status --porcelain)" ]; then
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     exit 1
   fi
-fi
-echo -e "${GREEN}✓ Git status clean${NC}"
-
-echo ""
-echo "Step 2: Building API..."
-echo "-----------------------"
-cd apps/api
-
-# Check if D1 database exists
-echo "Checking D1 database..."
-if ! wrangler d1 list | grep -q "felix-radio-db"; then
-  echo -e "${YELLOW}D1 database not found. Please create it first:${NC}"
-  echo "  wrangler d1 create felix-radio-db"
-  echo "  Then update wrangler.toml with the database_id"
-  exit 1
-fi
-echo -e "${GREEN}✓ D1 database exists${NC}"
-
-# Check if secrets are set
-echo "Checking secrets..."
-echo -e "${YELLOW}Note: Cannot verify secrets remotely. Ensure you have set:${NC}"
-echo "  - CLERK_SECRET_KEY"
-echo "  - INTERNAL_API_KEY"
-read -p "Secrets configured? (y/n) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "Set secrets with:"
-  echo "  wrangler secret put CLERK_SECRET_KEY"
-  echo "  wrangler secret put INTERNAL_API_KEY"
-  exit 1
-fi
-
-echo ""
-echo "Step 3: Deploying Workers API..."
-echo "--------------------------------"
-pnpm deploy
-
-if [ $? -eq 0 ]; then
-  echo -e "${GREEN}✓ Workers API deployed successfully${NC}"
 else
-  echo -e "${RED}✗ Workers API deployment failed${NC}"
-  exit 1
+  echo -e "${GREEN}✓ Git status clean${NC}"
 fi
 
-# Get deployment URL
-WORKER_URL=$(wrangler deployments list --json | head -1 | grep -o 'https://[^"]*' | head -1)
-echo ""
-echo -e "${GREEN}Workers API URL: ${WORKER_URL}${NC}"
+# ── Step 2: Deploy API (Cloudflare Workers) ─────────────────────────
 
-echo ""
-echo "Step 4: Testing deployment..."
-echo "-----------------------------"
-sleep 3  # Wait for deployment to propagate
+if [ "$SKIP_API" = false ]; then
+  echo ""
+  echo "Step 2: Deploying API (Cloudflare Workers)..."
+  echo "----------------------------------------------"
 
-# Test health endpoint
-echo "Testing health endpoint..."
-HEALTH_RESPONSE=$(curl -s "${WORKER_URL}/health")
-if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
-  echo -e "${GREEN}✓ Health check passed${NC}"
+  if ! command -v wrangler &> /dev/null && ! npx wrangler --version &> /dev/null; then
+    echo -e "${RED}Error: wrangler CLI not found${NC}"
+    exit 1
+  fi
+
+  cd apps/api
+  npx wrangler deploy
+
+  echo -e "${GREEN}✓ API deployed: ${WORKER_URL}${NC}"
+
+  # Health check
+  echo "Running health check..."
+  sleep 2
+  HEALTH_RESPONSE=$(curl -s "${WORKER_URL}/health" || echo "error")
+  if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
+    echo -e "${GREEN}✓ Health check passed${NC}"
+  else
+    echo -e "${YELLOW}Warning: Health check returned unexpected response${NC}"
+    echo "Response: $HEALTH_RESPONSE"
+  fi
+
+  cd ../..
 else
-  echo -e "${RED}✗ Health check failed${NC}"
-  echo "Response: $HEALTH_RESPONSE"
-  exit 1
+  echo -e "${YELLOW}Skipping API deployment${NC}"
 fi
 
-# Test database connection
-echo "Testing database connection..."
-STATIONS_RESPONSE=$(curl -s -H "Authorization: Bearer dummy-token" "${WORKER_URL}/api/stations" || echo "error")
-if echo "$STATIONS_RESPONSE" | grep -q "Unauthorized"; then
-  echo -e "${GREEN}✓ API responding (auth required as expected)${NC}"
+# ── Step 3: Deploy Web (Vercel) ─────────────────────────────────────
+
+if [ "$SKIP_WEB" = false ]; then
+  echo ""
+  echo "Step 3: Deploying Web (Vercel)..."
+  echo "----------------------------------"
+
+  if ! command -v vercel &> /dev/null && ! npx vercel --version &> /dev/null; then
+    echo -e "${RED}Error: vercel CLI not found${NC}"
+    exit 1
+  fi
+
+  cd apps/web
+  npx vercel --prod --yes
+
+  echo -e "${GREEN}✓ Web deployed to Vercel${NC}"
+  cd ../..
 else
-  echo -e "${YELLOW}Warning: Unexpected API response${NC}"
-  echo "Response: $STATIONS_RESPONSE"
+  echo -e "${YELLOW}Skipping Web deployment${NC}"
 fi
 
-cd ../..
+# ── Step 4: Deploy Recorder (Vultr VPS Docker) ──────────────────────
+
+if [ "$SKIP_RECORDER" = false ]; then
+  echo ""
+  echo "Step 4: Deploying Recorder (Vultr VPS)..."
+  echo "-------------------------------------------"
+
+  # Check sshpass
+  if ! command -v sshpass &> /dev/null; then
+    echo -e "${RED}Error: sshpass not found. Install with: brew install hudochenkov/sshpass/sshpass${NC}"
+    exit 1
+  fi
+
+  # Read VPS password
+  if [ -z "$VPS_PASSWORD" ]; then
+    read -s -p "VPS password for ${VPS_USER}@${VPS_HOST}: " VPS_PASSWORD
+    echo
+  fi
+
+  SSH_CMD="sshpass -e ssh -o StrictHostKeyChecking=accept-new -o PubkeyAuthentication=no -o PreferredAuthentications=password ${VPS_USER}@${VPS_HOST}"
+
+  # Test connection
+  echo "Connecting to VPS..."
+  if ! SSHPASS="$VPS_PASSWORD" $SSH_CMD "echo connected" &> /dev/null; then
+    echo -e "${RED}Error: Failed to connect to VPS${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✓ VPS connection OK${NC}"
+
+  # Pull latest code
+  echo "Pulling latest code..."
+  SSHPASS="$VPS_PASSWORD" $SSH_CMD "cd /root/felix-radio && git pull"
+  echo -e "${GREEN}✓ Code updated${NC}"
+
+  # Docker rebuild and restart
+  echo "Building and restarting Docker container..."
+  SSHPASS="$VPS_PASSWORD" $SSH_CMD "cd ${RECORDER_DIR} && docker compose down && docker compose build --no-cache && docker compose up -d"
+  echo -e "${GREEN}✓ Docker container rebuilt and started${NC}"
+
+  # Verify container is running
+  echo "Verifying container status..."
+  sleep 2
+  CONTAINER_STATUS=$(SSHPASS="$VPS_PASSWORD" $SSH_CMD "docker compose -f ${RECORDER_DIR}/docker-compose.yml ps --format '{{.Status}}'" 2>/dev/null || echo "unknown")
+  if echo "$CONTAINER_STATUS" | grep -q "Up"; then
+    echo -e "${GREEN}✓ Recorder container is running${NC}"
+  else
+    echo -e "${YELLOW}Warning: Container status: ${CONTAINER_STATUS}${NC}"
+    echo "Check logs with: ssh ${VPS_USER}@${VPS_HOST} 'docker logs felix-recorder --tail 20'"
+  fi
+
+  # Show recent logs
+  echo ""
+  echo "Recent recorder logs:"
+  SSHPASS="$VPS_PASSWORD" $SSH_CMD "docker logs felix-recorder --tail 5" 2>&1
+else
+  echo -e "${YELLOW}Skipping Recorder deployment${NC}"
+fi
+
+# ── Summary ─────────────────────────────────────────────────────────
 
 echo ""
-echo "Step 5: Frontend deployment instructions"
-echo "----------------------------------------"
-echo -e "${YELLOW}Frontend must be deployed via Cloudflare Pages:${NC}"
+echo "===================================="
+echo "Deployment Summary"
+echo "===================================="
+[ "$SKIP_API" = false ] && echo -e "${GREEN}✓ API:      ${WORKER_URL}${NC}"
+[ "$SKIP_WEB" = false ] && echo -e "${GREEN}✓ Web:      Vercel (see URL above)${NC}"
+[ "$SKIP_RECORDER" = false ] && echo -e "${GREEN}✓ Recorder: ${VPS_USER}@${VPS_HOST} (Docker)${NC}"
 echo ""
-echo "1. Go to Cloudflare Dashboard → Pages"
-echo "2. Create project from GitHub repository"
-echo "3. Configure build:"
-echo "   - Build command: cd apps/web && npm run build"
-echo "   - Build output: apps/web/.next"
-echo "4. Set environment variables:"
-echo "   - NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_live_..."
-echo "   - CLERK_SECRET_KEY=sk_live_..."
-echo "   - NEXT_PUBLIC_API_URL=${WORKER_URL}"
-echo "5. Deploy"
+echo "Useful commands:"
+echo "  API logs:      cd apps/api && npx wrangler tail"
+echo "  Recorder logs: ssh ${VPS_USER}@${VPS_HOST} 'docker logs felix-recorder -f'"
 echo ""
-read -p "Press Enter when frontend is deployed..."
-
-echo ""
-echo "Step 6: Deployment summary"
-echo "-------------------------"
-echo -e "${GREEN}✓ API deployed: ${WORKER_URL}${NC}"
-echo ""
-echo "Next steps:"
-echo "1. Update apps/web/.env.local with NEXT_PUBLIC_API_URL"
-echo "2. Deploy recorder server to Vultr VPS (see docs/DEPLOYMENT.md)"
-echo "3. Test end-to-end recording flow"
-echo "4. Monitor logs: wrangler tail felix-radio-api"
-echo ""
-echo -e "${GREEN}Deployment complete! 🎉${NC}"
+echo -e "${GREEN}Deployment complete!${NC}"
