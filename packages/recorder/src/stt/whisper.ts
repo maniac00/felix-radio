@@ -44,6 +44,8 @@ export class WhisperClient {
   constructor(config: Config) {
     this.client = new OpenAI({
       apiKey: config.openaiApiKey,
+      timeout: 10 * 60 * 1000, // 10 minutes per request
+      maxRetries: 0, // We handle retries ourselves via withRetry()
     });
     this.model = config.transcriptionModel;
   }

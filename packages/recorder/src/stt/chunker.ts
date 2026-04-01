@@ -13,7 +13,7 @@ export interface ChunkInfo {
   startOffsetSecs: number;
 }
 
-const MAX_CHUNK_SIZE_MB = 20; // Stay safely under 25MB limit
+const MAX_CHUNK_SIZE_MB = 10; // Smaller chunks for faster API processing and reliability
 
 /**
  * Get audio duration in seconds using ffprobe

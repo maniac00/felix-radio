@@ -13,7 +13,7 @@ import { WorkersAPIClient } from '../api/client.js';
 import { withRetry } from '../scheduler/executor.js';
 import { logger } from '../lib/logger.js';
 
-const MAX_SINGLE_FILE_MB = 20; // Files larger than this get chunked
+const MAX_SINGLE_FILE_MB = 10; // Files larger than this get chunked
 
 /**
  * Process an STT job: convert audio to timestamped text, upload to R2, update DB.
