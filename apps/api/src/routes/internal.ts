@@ -147,6 +147,46 @@ internal.post('/recordings', async (c) => {
   }
 
   try {
+    // Idempotent upsert: if a row with the same (schedule_id, recorded_at) already
+    // exists, update it and return the existing id. Prevents duplicate rows when the
+    // recorder retries createRecording after a lost response from a prior call.
+    // Manual recordings (schedule_id=null) are not deduped.
+    if (schedule_id) {
+      const existing = await db
+        .prepare(
+          'SELECT id FROM recordings WHERE schedule_id = ? AND recorded_at = ? LIMIT 1'
+        )
+        .bind(schedule_id, recorded_at)
+        .first<{ id: number }>();
+
+      if (existing) {
+        await db
+          .prepare(`
+            UPDATE recordings
+            SET station_id = ?, program_name = ?, duration_secs = ?,
+                file_size_bytes = ?, audio_file_path = ?, status = ?,
+                error_message = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `)
+          .bind(
+            station_id,
+            program_name,
+            duration_secs,
+            file_size_bytes,
+            audio_file_path,
+            status,
+            error_message || null,
+            existing.id
+          )
+          .run();
+
+        return c.json({
+          message: 'Recording updated (idempotent)',
+          recording_id: existing.id,
+        });
+      }
+    }
+
     const result = await db
       .prepare(`
         INSERT INTO recordings (
