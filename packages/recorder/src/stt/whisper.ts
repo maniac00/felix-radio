@@ -150,34 +150,43 @@ export class WhisperClient {
       model: this.model,
     });
 
-    const fileStream = createReadStream(audioFilePath);
+    try {
+      const fileStream = createReadStream(audioFilePath);
 
-    const transcription = await this.client.audio.transcriptions.create({
-      file: fileStream as any,
-      model: this.model,
-      language: 'ko',
-      response_format: 'verbose_json',
-    });
+      const transcription = await this.client.audio.transcriptions.create({
+        file: fileStream as any,
+        model: this.model,
+        language: 'ko',
+        response_format: 'verbose_json',
+      });
 
-    const segments = transcription.segments ?? [];
+      const segments = transcription.segments ?? [];
 
-    if (segments.length === 0) {
-      logger.warn('No segments returned from API');
-      return [];
+      if (segments.length === 0) {
+        logger.warn('No segments returned from API');
+        return [];
+      }
+
+      const lines = segments.map((segment) => {
+        const adjustedOffset = chunkStartOffsetSecs + segment.start;
+        const timestamp = formatKSTTime(recordedAt, adjustedOffset);
+        const text = segment.text.trim();
+        return `${timestamp} ${text}`;
+      });
+
+      logger.info('Chunk transcription completed', {
+        segments: segments.length,
+        chunkStartOffsetSecs,
+      });
+
+      return lines;
+    } catch (error) {
+      logger.error('Whisper chunk transcription failed', {
+        audioFilePath,
+        chunkStartOffsetSecs,
+        error,
+      });
+      throw toUserError(error);
     }
-
-    const lines = segments.map((segment) => {
-      const adjustedOffset = chunkStartOffsetSecs + segment.start;
-      const timestamp = formatKSTTime(recordedAt, adjustedOffset);
-      const text = segment.text.trim();
-      return `${timestamp} ${text}`;
-    });
-
-    logger.info('Chunk transcription completed', {
-      segments: segments.length,
-      chunkStartOffsetSecs,
-    });
-
-    return lines;
   }
 }
