@@ -6,7 +6,7 @@
 import { access, stat, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { STTJob, Config } from '../types.js';
-import { WhisperClient } from './whisper.js';
+import { WhisperClient, dedupConsecutiveLines } from './whisper.js';
 import { splitAudioFile, cleanupChunks } from './chunker.js';
 import { R2Client } from '../storage/r2Client.js';
 import { WorkersAPIClient } from '../api/client.js';
@@ -55,7 +55,10 @@ export async function processSTTJob(
     const fileStats = await stat(audioPath);
     const fileSizeMB = fileStats.size / (1024 * 1024);
 
-    let text: string;
+    // Bias Whisper away from generic ad/silence hallucinations toward this program's context.
+    const prompt = `이것은 한국어 라디오 방송 "${job.program_name}" 녹음입니다.`;
+
+    let lines: string[];
 
     if (fileSizeMB <= MAX_SINGLE_FILE_MB) {
       // Small file: single Whisper API call
@@ -63,8 +66,8 @@ export async function processSTTJob(
         recordingId: job.recording_id,
         sizeMB: fileSizeMB.toFixed(1),
       });
-      text = await withRetry(
-        () => whisper.convertToTimestampedText(audioPath, job.recorded_at),
+      lines = await withRetry(
+        () => whisper.convertToTimestampedText(audioPath, job.recorded_at, prompt),
         'Whisper STT conversion',
         2
       );
@@ -88,19 +91,30 @@ export async function processSTTJob(
             startOffsetSecs: chunk.startOffsetSecs,
           });
 
-          const lines = await withRetry(
-            () => whisper.transcribeChunk(chunk.path, job.recorded_at, chunk.startOffsetSecs),
+          const chunkLines = await withRetry(
+            () => whisper.transcribeChunk(chunk.path, job.recorded_at, chunk.startOffsetSecs, prompt),
             `Whisper chunk ${i + 1}/${chunks.length}`,
             2
           );
-          allLines.push(...lines);
+          allLines.push(...chunkLines);
         }
 
-        text = allLines.join('\n');
+        lines = allLines;
       } finally {
         await cleanupChunks(chunks);
       }
     }
+
+    const dedupedLines = dedupConsecutiveLines(lines);
+    const collapsedRuns = lines.length - dedupedLines.length;
+    if (collapsedRuns > 0) {
+      logger.info('Collapsed hallucination runs', {
+        recordingId: job.recording_id,
+        originalLines: lines.length,
+        dedupedLines: dedupedLines.length,
+      });
+    }
+    const text = dedupedLines.join('\n');
 
     if (!text) {
       throw new Error('Whisper returned empty transcription');

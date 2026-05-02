@@ -11,6 +11,36 @@ import { logger } from '../lib/logger.js';
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000; // UTC+9
 
 /**
+ * Strip leading "(HH:mm:ss) " from a line, returning only the spoken text.
+ */
+function stripTimestamp(line: string): string {
+  return line.replace(/^\(\d{2}:\d{2}:\d{2}\)\s*/, '');
+}
+
+/**
+ * Collapse runs of consecutive identical lines (Whisper self-loop hallucination
+ * during silence/ad/music). Keeps the first occurrence and inserts a marker.
+ */
+export function dedupConsecutiveLines(lines: string[], threshold = 3): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const cur = stripTimestamp(lines[i]);
+    let j = i + 1;
+    while (j < lines.length && stripTimestamp(lines[j]) === cur) j++;
+    const runLen = j - i;
+    if (runLen >= threshold) {
+      out.push(lines[i]);
+      out.push(`(이전 줄 ${runLen}회 반복 — Whisper hallucination 의심으로 생략)`);
+    } else {
+      for (let k = i; k < j; k++) out.push(lines[k]);
+    }
+    i = j;
+  }
+  return out;
+}
+
+/**
  * Format a UTC timestamp + offset into KST (HH:mm:ss) string
  */
 function formatKSTTime(recordedAtISO: string, offsetSecs: number): string {
@@ -101,13 +131,14 @@ export class WhisperClient {
   }
 
   /**
-   * Convert a single audio file (must be ≤25MB) to timestamped text.
+   * Convert a single audio file (must be ≤25MB) to timestamped lines.
    * For files >25MB, use transcribeChunk() with audio splitting.
    */
   async convertToTimestampedText(
     audioFilePath: string,
-    recordedAt: string
-  ): Promise<string> {
+    recordedAt: string,
+    prompt?: string
+  ): Promise<string[]> {
     logger.info('Converting audio to timestamped text', {
       audioFilePath,
       recordedAt,
@@ -116,15 +147,13 @@ export class WhisperClient {
 
     try {
       await this.validateFileSize(audioFilePath);
-      const lines = await this.transcribeChunk(audioFilePath, recordedAt, 0);
-      const result = lines.join('\n');
+      const lines = await this.transcribeChunk(audioFilePath, recordedAt, 0, prompt);
 
       logger.info('Timestamped transcription completed', {
         lines: lines.length,
-        textLength: result.length,
       });
 
-      return result;
+      return lines;
     } catch (error) {
       logger.error('Whisper API failed', { audioFilePath, error });
       throw toUserError(error);
@@ -142,7 +171,8 @@ export class WhisperClient {
   async transcribeChunk(
     audioFilePath: string,
     recordedAt: string,
-    chunkStartOffsetSecs: number
+    chunkStartOffsetSecs: number,
+    prompt?: string
   ): Promise<string[]> {
     logger.info('Transcribing chunk', {
       audioFilePath,
@@ -153,11 +183,15 @@ export class WhisperClient {
     try {
       const fileStream = createReadStream(audioFilePath);
 
+      // temperature > 0 reduces self-loop hallucination during silence/ad gaps;
+      // prompt biases the decoder away from repeating earlier sentences.
       const transcription = await this.client.audio.transcriptions.create({
         file: fileStream as any,
         model: this.model,
         language: 'ko',
         response_format: 'verbose_json',
+        temperature: 0.2,
+        ...(prompt ? { prompt } : {}),
       });
 
       const segments = transcription.segments ?? [];
