@@ -1,7 +1,8 @@
 /**
  * File cleaner - removes local audio files after retention period
  *
- * Only cleans files that are in 'db_synced' state and older than retentionDays.
+ * Only cleans terminal-state entries ('stt_completed', or 'db_synced' when
+ * STT failed permanently) older than retentionDays.
  * Runs on an interval (default: every hour).
  */
 
@@ -40,7 +41,10 @@ export class FileCleaner {
     try {
       const now = Date.now();
       const retentionMs = this.retentionDays * 24 * 60 * 60 * 1000;
-      const entries = this.journal.getEntriesByStatus('db_synced');
+      const entries = [
+        ...this.journal.getEntriesByStatus('stt_completed'),
+        ...this.journal.getEntriesByStatus('db_synced'),
+      ];
 
       let cleaned = 0;
       for (const entry of entries) {
