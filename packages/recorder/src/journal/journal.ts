@@ -78,7 +78,12 @@ export class Journal {
    */
   async updateEntry(
     key: string,
-    updates: Partial<Pick<JournalEntry, 'status' | 'recordingId' | 'errorMessage' | 'retryCount' | 'localPath'>>
+    updates: Partial<
+      Pick<
+        JournalEntry,
+        'status' | 'recordingId' | 'errorMessage' | 'retryCount' | 'localPath' | 'sttAttempts' | 'sttLastAttemptAt'
+      >
+    >
   ): Promise<void> {
     const entry = this.data.entries[key];
     if (!entry) {

@@ -59,4 +59,5 @@ export interface Config {
   dataDir: string; // Persistent data directory for journal + audio files
   retentionDays: number; // Days to keep local audio files after db_synced
   scheduleWindowMins: number; // Minutes before start_time to match schedules
+  sttRetryMax: number; // Max STT attempts per recording before giving up
 }

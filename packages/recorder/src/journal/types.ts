@@ -40,6 +40,10 @@ export interface JournalEntry {
   errorMessage?: string;
   /** Retry count for current phase */
   retryCount: number;
+  /** Number of failed STT attempts (drives retry backoff) */
+  sttAttempts?: number;
+  /** ISO 8601 timestamp of the last STT attempt */
+  sttLastAttemptAt?: string;
 }
 
 export interface JournalData {

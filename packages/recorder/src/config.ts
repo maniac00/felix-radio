@@ -31,6 +31,7 @@ export function loadConfig(): Config {
     dataDir: getEnv('DATA_DIR', false) || '/data/felix-recordings',
     retentionDays: parseInt(getEnv('RETENTION_DAYS', false) || '3', 10),
     scheduleWindowMins: parseInt(getEnv('SCHEDULE_WINDOW_MINS', false) || '5', 10),
+    sttRetryMax: parseInt(getEnv('STT_RETRY_MAX', false) || '10', 10),
   };
 }
 
@@ -65,6 +66,10 @@ export function validateConfig(config: Config): void {
 
   if (config.scheduleWindowMins < 1 || config.scheduleWindowMins > 15) {
     errors.push('SCHEDULE_WINDOW_MINS must be between 1 and 15');
+  }
+
+  if (config.sttRetryMax < 1 || config.sttRetryMax > 50) {
+    errors.push('STT_RETRY_MAX must be between 1 and 50');
   }
 
   if (errors.length > 0) {

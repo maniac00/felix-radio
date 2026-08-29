@@ -270,38 +270,7 @@ export async function processEntry(
 
     // Phase: db_synced -> stt_processing -> stt_completed (best-effort)
     if (entry.status === 'db_synced' && entry.recordingId) {
-      await journal.updateEntry(entry.key, { status: 'stt_processing' });
-      entry.status = 'stt_processing';
-
-      const sttJob: STTJob = {
-        recording_id: entry.recordingId,
-        audio_file_path: entry.r2Key,
-        user_id: entry.schedule.userId,
-        program_name: entry.schedule.programName,
-        recorded_at: entry.createdAt,
-      };
-
-      let sttSuccess = false;
-      try {
-        await processSTTJob(sttJob, config, entry.localPath);
-        sttSuccess = true;
-      } catch (sttError) {
-        logger.error('STT processing failed', {
-          key: entry.key,
-          error: sttError instanceof Error ? sttError.message : String(sttError),
-        });
-      }
-
-      if (sttSuccess) {
-        await journal.updateEntry(entry.key, { status: 'stt_completed' });
-        entry.status = 'stt_completed';
-        logger.info('STT completed', { key: entry.key });
-      } else {
-        // STT failed but recording is safe - revert to db_synced
-        await journal.updateEntry(entry.key, { status: 'db_synced' });
-        entry.status = 'db_synced';
-        logger.warn('STT failed, recording preserved', { key: entry.key });
-      }
+      await runSTTPhase(entry, config, journal);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -324,4 +293,63 @@ export async function processEntry(
 
     throw error;
   }
+}
+
+/**
+ * Run the STT phase for a db_synced entry: db_synced -> stt_processing ->
+ * stt_completed. On failure the entry reverts to db_synced with the attempt
+ * counter bumped, so the STT retrier can pick it up again later.
+ * Returns true on success.
+ */
+export async function runSTTPhase(
+  entry: JournalEntry,
+  config: Config,
+  journal: Journal
+): Promise<boolean> {
+  if (!entry.recordingId) {
+    return false;
+  }
+
+  await journal.updateEntry(entry.key, {
+    status: 'stt_processing',
+    sttLastAttemptAt: new Date().toISOString(),
+  });
+  entry.status = 'stt_processing';
+
+  const sttJob: STTJob = {
+    recording_id: entry.recordingId,
+    audio_file_path: entry.r2Key,
+    user_id: entry.schedule.userId,
+    program_name: entry.schedule.programName,
+    recorded_at: entry.createdAt,
+  };
+
+  let sttSuccess = false;
+  try {
+    await processSTTJob(sttJob, config, entry.localPath);
+    sttSuccess = true;
+  } catch (sttError) {
+    logger.error('STT processing failed', {
+      key: entry.key,
+      error: sttError instanceof Error ? sttError.message : String(sttError),
+    });
+  }
+
+  if (sttSuccess) {
+    await journal.updateEntry(entry.key, { status: 'stt_completed' });
+    entry.status = 'stt_completed';
+    logger.info('STT completed', { key: entry.key });
+  } else {
+    // STT failed but recording is safe - revert to db_synced for retry
+    const sttAttempts = (entry.sttAttempts ?? 0) + 1;
+    await journal.updateEntry(entry.key, { status: 'db_synced', sttAttempts });
+    entry.status = 'db_synced';
+    entry.sttAttempts = sttAttempts;
+    logger.warn('STT failed, recording preserved', {
+      key: entry.key,
+      sttAttempts,
+    });
+  }
+
+  return sttSuccess;
 }

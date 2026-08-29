@@ -12,6 +12,7 @@
 import { access } from 'fs/promises';
 import { loadConfig, validateConfig } from './config.js';
 import { SchedulePoller } from './scheduler/poller.js';
+import { STTRetrier } from './scheduler/sttRetrier.js';
 import { processEntry } from './scheduler/executor.js';
 import { Journal } from './journal/journal.js';
 import { FileCleaner } from './journal/cleaner.js';
@@ -129,6 +130,13 @@ async function recoverEntry(
       await processEntry(entry, config, journal);
       break;
     }
+
+    case 'stt_processing': {
+      // Crashed mid-STT: revert to db_synced so the STT retrier picks it up
+      logger.info('STT was interrupted, queuing for retry', { key: entry.key });
+      await journal.updateEntry(entry.key, { status: 'db_synced' });
+      break;
+    }
   }
 }
 
@@ -155,11 +163,15 @@ async function main(): Promise<void> {
   // Initialize file cleaner
   const cleaner = new FileCleaner(journal, config.retentionDays);
 
+  // Initialize STT retrier (reprocesses failed STT jobs)
+  const sttRetrier = new STTRetrier(config, journal);
+
   // Graceful shutdown handler
   function shutdown(signal: string): void {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     poller.stop();
     cleaner.stop();
+    sttRetrier.stop();
     process.exit(0);
   }
 
@@ -170,6 +182,7 @@ async function main(): Promise<void> {
   logger.info('Starting Felix Radio Recorder...');
   poller.start();
   cleaner.start();
+  sttRetrier.start();
   logger.info('Felix Radio Recorder is running');
 }
 
