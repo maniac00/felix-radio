@@ -11,7 +11,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 
 # Install pnpm and dependencies
-RUN npm install -g pnpm && pnpm install --no-frozen-lockfile
+# pnpm pinned to v10: newer majors ignore package.json "pnpm" config
+# (onlyBuiltDependencies) and fail the install with ERR_PNPM_IGNORED_BUILDS
+RUN npm install -g pnpm@10 && pnpm install --no-frozen-lockfile
 
 # Copy source code
 COPY . .
