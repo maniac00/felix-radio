@@ -187,12 +187,17 @@ recordings.get('/:id/stt', async (c) => {
       });
     }
 
-    if (!recording.stt_text_path) {
+    // engine=qwen3 serves the secondary engine's result; default is whisper
+    const engine = c.req.query('engine') === 'qwen3' ? 'qwen3' : 'whisper';
+    const textPath =
+      engine === 'qwen3' ? recording.stt_qwen3_text_path : recording.stt_text_path;
+
+    if (!textPath) {
       return c.json({ error: 'STT text path not found' }, 404);
     }
 
     // Get the text file from R2
-    const textFile = await downloadFile(r2, recording.stt_text_path);
+    const textFile = await downloadFile(r2, textPath);
 
     if (!textFile) {
       return c.json({ error: 'STT text file not found in storage' }, 404);
@@ -202,8 +207,9 @@ recordings.get('/:id/stt', async (c) => {
 
     return c.json({
       stt_status: 'completed',
+      engine,
       text,
-      text_path: recording.stt_text_path,
+      text_path: textPath,
     });
   } catch (error) {
     console.error('Error fetching STT result:', error);

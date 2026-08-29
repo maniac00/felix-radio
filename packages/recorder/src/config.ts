@@ -21,6 +21,8 @@ export function loadConfig(): Config {
     internalApiKey: getEnv('INTERNAL_API_KEY'),
     openaiApiKey: getEnv('OPENAI_API_KEY'),
     transcriptionModel: getEnv('TRANSCRIPTION_MODEL', false) || 'whisper-1',
+    openrouterApiKey: getEnv('OPENROUTER_API_KEY', false),
+    qwen3Model: getEnv('QWEN3_STT_MODEL', false) || 'qwen/qwen3-asr-1.7b',
     r2AccountId: getEnv('R2_ACCOUNT_ID'),
     r2AccessKeyId: getEnv('R2_ACCESS_KEY_ID'),
     r2SecretAccessKey: getEnv('R2_SECRET_ACCESS_KEY'),

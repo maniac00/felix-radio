@@ -192,4 +192,18 @@ export class WorkersAPIClient {
 
     logger.info(`Recording ${recordingId} STT status updated to ${sttStatus}`);
   }
+
+  /**
+   * Store the secondary (Qwen3) STT text path without touching stt_status
+   */
+  async updateQwen3TextPath(recordingId: number, textPath: string): Promise<void> {
+    await this.request(`/api/internal/recordings/${recordingId}/stt`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        stt_qwen3_text_path: textPath,
+      }),
+    });
+
+    logger.info(`Recording ${recordingId} Qwen3 STT path updated`);
+  }
 }

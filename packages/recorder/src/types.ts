@@ -49,6 +49,8 @@ export interface Config {
   internalApiKey: string;
   openaiApiKey: string;
   transcriptionModel: string; // 'gpt-4o-mini-transcribe' | 'whisper-1'
+  openrouterApiKey: string; // Optional; enables secondary Qwen3 STT when set
+  qwen3Model: string; // OpenRouter model slug for the secondary STT engine
   r2AccountId: string;
   r2AccessKeyId: string;
   r2SecretAccessKey: string;

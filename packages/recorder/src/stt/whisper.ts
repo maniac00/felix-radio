@@ -41,6 +41,39 @@ export function dedupConsecutiveLines(lines: string[], threshold = 3): string[] 
 }
 
 /**
+ * Collapse a token repeated many times consecutively WITHIN a single line
+ * (e.g. "Oh, oh, oh, oh, ..." during music). Keeps the first few occurrences
+ * and appends a marker. Tokens are compared ignoring case and trailing
+ * punctuation so "Oh," matches "oh".
+ */
+export function collapseInlineRepetition(line: string, threshold = 5): string {
+  const tokens = line.split(/\s+/);
+  if (tokens.length < threshold) return line;
+
+  const normalize = (t: string) => t.toLowerCase().replace(/[,.!?~…]+$/, '');
+  const out: string[] = [];
+  let i = 0;
+  let collapsed = false;
+
+  while (i < tokens.length) {
+    const cur = normalize(tokens[i]);
+    let j = i + 1;
+    while (j < tokens.length && cur !== '' && normalize(tokens[j]) === cur) j++;
+    const runLen = j - i;
+    if (runLen >= threshold) {
+      out.push(...tokens.slice(i, i + 3));
+      out.push(`…(같은 말 ${runLen}회 반복 생략)`);
+      collapsed = true;
+    } else {
+      out.push(...tokens.slice(i, j));
+    }
+    i = j;
+  }
+
+  return collapsed ? out.join(' ') : line;
+}
+
+/**
  * Format a UTC timestamp + offset into KST (HH:mm:ss) string
  */
 function formatKSTTime(recordedAtISO: string, offsetSecs: number): string {
@@ -67,17 +100,36 @@ function toUserError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
+export interface TranscriptionClientOverrides {
+  apiKey: string;
+  baseURL: string;
+  model: string;
+}
+
 export class WhisperClient {
   private client: OpenAI;
   private model: string;
 
-  constructor(config: Config) {
+  constructor(config: Config, overrides?: TranscriptionClientOverrides) {
     this.client = new OpenAI({
-      apiKey: config.openaiApiKey,
+      apiKey: overrides?.apiKey ?? config.openaiApiKey,
+      ...(overrides?.baseURL ? { baseURL: overrides.baseURL } : {}),
       timeout: 10 * 60 * 1000, // 10 minutes per request
       maxRetries: 0, // We handle retries ourselves via withRetry()
     });
-    this.model = config.transcriptionModel;
+    this.model = overrides?.model ?? config.transcriptionModel;
+  }
+
+  /**
+   * Secondary STT engine via OpenRouter (Qwen3 ASR). The transcriptions
+   * endpoint is OpenAI-compatible, so the same client code works.
+   */
+  static forQwen3(config: Config): WhisperClient {
+    return new WhisperClient(config, {
+      apiKey: config.openrouterApiKey,
+      baseURL: 'https://openrouter.ai/api/v1',
+      model: config.qwen3Model,
+    });
   }
 
   /**

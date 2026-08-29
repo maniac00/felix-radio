@@ -17,6 +17,10 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 
+# API keys
+apikey.md
+stt-comparison/
+
 # Environment variables
 .env
 .env*.local
