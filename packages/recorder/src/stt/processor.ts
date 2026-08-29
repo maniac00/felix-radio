@@ -1,21 +1,16 @@
 /**
  * STT job processor - converts audio recordings to timestamped text.
- * Handles large files by splitting into chunks for Whisper API's 25MB limit.
- *
- * Runs two engines per recording:
- * - Whisper (OpenAI) — primary, drives stt_status
- * - Qwen3 ASR (OpenRouter) — secondary, best-effort, enabled when
- *   OPENROUTER_API_KEY is set
+ * Handles large files by splitting into chunks for the STT API's 25MB limit.
  */
 
 import { access, stat, mkdir } from 'fs/promises';
 import { join } from 'path';
 import type { STTJob, Config } from '../types.js';
 import {
-  WhisperClient,
+  STTClient,
   dedupConsecutiveLines,
   collapseInlineRepetition,
-} from './whisper.js';
+} from './sttClient.js';
 import { splitAudioFile, cleanupChunks } from './chunker.js';
 import { R2Client } from '../storage/r2Client.js';
 import { WorkersAPIClient } from '../api/client.js';
@@ -25,16 +20,15 @@ import { logger } from '../lib/logger.js';
 const MAX_SINGLE_FILE_MB = 10; // Files larger than this get chunked
 
 /**
- * Transcribe an audio file with the given client, chunking when too large.
+ * Transcribe an audio file, chunking when too large.
  * Returns cleaned, timestamped text (repetition-suppressed).
  */
 async function transcribeAudio(
-  client: WhisperClient,
+  client: STTClient,
   audioPath: string,
   job: STTJob,
   config: Config,
-  prompt: string,
-  engine: string
+  prompt: string
 ): Promise<string> {
   const fileStats = await stat(audioPath);
   const fileSizeMB = fileStats.size / (1024 * 1024);
@@ -45,27 +39,21 @@ async function transcribeAudio(
     // Small file: single API call
     logger.info('Processing small file directly', {
       recordingId: job.recording_id,
-      engine,
       sizeMB: fileSizeMB.toFixed(1),
     });
     lines = await withRetry(
       () => client.convertToTimestampedText(audioPath, job.recorded_at, prompt),
-      `${engine} STT conversion`,
+      'STT conversion',
       2
     );
   } else {
     // Large file: split into chunks and process each
     logger.info('Processing large file with chunking', {
       recordingId: job.recording_id,
-      engine,
       sizeMB: fileSizeMB.toFixed(1),
     });
 
-    const chunkDir = join(
-      config.dataDir,
-      'stt-chunks',
-      `${job.recording_id}-${engine}`
-    );
+    const chunkDir = join(config.dataDir, 'stt-chunks', String(job.recording_id));
     const chunks = await splitAudioFile(audioPath, chunkDir);
 
     try {
@@ -75,13 +63,12 @@ async function transcribeAudio(
         const chunk = chunks[i];
         logger.info(`Processing chunk ${i + 1}/${chunks.length}`, {
           recordingId: job.recording_id,
-          engine,
           startOffsetSecs: chunk.startOffsetSecs,
         });
 
         const chunkLines = await withRetry(
           () => client.transcribeChunk(chunk.path, job.recorded_at, chunk.startOffsetSecs, prompt),
-          `${engine} chunk ${i + 1}/${chunks.length}`,
+          `STT chunk ${i + 1}/${chunks.length}`,
           2
         );
         allLines.push(...chunkLines);
@@ -100,7 +87,6 @@ async function transcribeAudio(
   if (collapsedRuns > 0) {
     logger.info('Collapsed hallucination runs', {
       recordingId: job.recording_id,
-      engine,
       originalLines: lines.length,
       dedupedLines: dedupedLines.length,
     });
@@ -117,7 +103,7 @@ export async function processSTTJob(
   config: Config,
   localAudioPath: string
 ): Promise<void> {
-  const whisper = new WhisperClient(config);
+  const stt = new STTClient(config);
   const r2 = new R2Client(config);
   const api = new WorkersAPIClient(config);
 
@@ -145,13 +131,13 @@ export async function processSTTJob(
       );
     }
 
-    // Bias Whisper away from generic ad/silence hallucinations toward this program's context.
+    // Bias the model away from generic ad/silence hallucinations toward this program's context.
     const prompt = `이것은 한국어 라디오 방송 "${job.program_name}" 녹음입니다.`;
 
-    const text = await transcribeAudio(whisper, audioPath, job, config, prompt, 'whisper');
+    const text = await transcribeAudio(stt, audioPath, job, config, prompt);
 
     if (!text) {
-      throw new Error('Whisper returned empty transcription');
+      throw new Error('STT returned empty transcription');
     }
 
     // Upload text to R2
@@ -171,11 +157,6 @@ export async function processSTTJob(
       sttKey,
       textLength: text.length,
     });
-
-    // Secondary engine (Qwen3 via OpenRouter) — best-effort, never fails the job
-    if (config.openrouterApiKey) {
-      await processQwen3(job, config, audioPath, prompt, sttFilename, r2, api);
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logger.error('STT job failed', {
@@ -191,54 +172,5 @@ export async function processSTTJob(
     }
 
     throw error;
-  }
-}
-
-/**
- * Run the secondary Qwen3 STT and store its result alongside the whisper one.
- * Failures are logged only — the whisper result already completed the job.
- */
-async function processQwen3(
-  job: STTJob,
-  config: Config,
-  audioPath: string,
-  prompt: string,
-  sttFilename: string,
-  r2: R2Client,
-  api: WorkersAPIClient
-): Promise<void> {
-  try {
-    const qwen3 = WhisperClient.forQwen3(config);
-    const text = await transcribeAudio(qwen3, audioPath, job, config, prompt, 'qwen3');
-
-    if (!text) {
-      throw new Error('Qwen3 returned empty transcription');
-    }
-
-    const qwen3Key = R2Client.getUserSTTKey(
-      job.user_id,
-      sttFilename.replace(/\.txt$/, '.qwen3.txt')
-    );
-
-    await withRetry(
-      () => r2.uploadText(text, qwen3Key),
-      'R2 Qwen3 STT text upload'
-    );
-
-    await withRetry(
-      () => api.updateQwen3TextPath(job.recording_id, qwen3Key),
-      'DB Qwen3 STT path update'
-    );
-
-    logger.info('Qwen3 STT completed', {
-      recordingId: job.recording_id,
-      qwen3Key,
-      textLength: text.length,
-    });
-  } catch (error) {
-    logger.error('Qwen3 STT failed (whisper result preserved)', {
-      recordingId: job.recording_id,
-      error: error instanceof Error ? error.message : String(error),
-    });
   }
 }

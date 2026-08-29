@@ -52,7 +52,6 @@ export interface Recording {
   status: 'pending' | 'recording' | 'completed' | 'failed';
   stt_status: 'none' | 'processing' | 'completed' | 'failed';
   stt_text_path: string | null;
-  stt_qwen3_text_path: string | null;
   error_message: string | null;
   created_at: string;
   updated_at: string;

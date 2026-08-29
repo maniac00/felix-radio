@@ -48,7 +48,6 @@ export interface Recording {
   status: RecordingStatus;
   stt_status: STTStatus;
   stt_text_path: string | null; // R2 path
-  stt_qwen3_text_path: string | null; // R2 path (secondary Qwen3 engine)
   error_message: string | null;
   created_at: string;
   updated_at: string;

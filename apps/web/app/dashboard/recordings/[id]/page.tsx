@@ -36,8 +36,6 @@ export default function RecordingDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isConverting, setIsConverting] = useState(false);
   const [sttText, setSTTText] = useState('');
-  const [qwen3Text, setQwen3Text] = useState('');
-  const [sttEngine, setSTTEngine] = useState<'whisper' | 'qwen3'>('whisper');
   const [copied, setCopied] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string>('');
 
@@ -69,16 +67,6 @@ export default function RecordingDetailPage() {
           setSTTText(text);
         } catch (error) {
           console.error('Failed to load STT text:', error);
-        }
-
-        // Secondary Qwen3 result (optional)
-        if (data.stt_qwen3_text_path) {
-          try {
-            const text = await apiClient.getSTTResult(recordingId, 'qwen3');
-            setQwen3Text(text);
-          } catch (error) {
-            console.error('Failed to load Qwen3 STT text:', error);
-          }
         }
       }
     } catch (error) {
@@ -116,7 +104,7 @@ export default function RecordingDetailPage() {
     try {
       setIsConverting(true);
       toast.info('STT 변환을 시작합니다', {
-        description: 'Whisper API가 처리 중입니다',
+        description: 'AI가 처리 중입니다',
       });
 
       await apiClient.triggerSTT(recordingId);
@@ -140,11 +128,9 @@ export default function RecordingDetailPage() {
     }
   };
 
-  const activeText = sttEngine === 'qwen3' ? qwen3Text : sttText;
-
   const handleCopyText = async () => {
     try {
-      await navigator.clipboard.writeText(activeText);
+      await navigator.clipboard.writeText(sttText);
       setCopied(true);
       toast.success('텍스트가 클립보드에 복사되었습니다');
       setTimeout(() => setCopied(false), 2000);
@@ -154,11 +140,11 @@ export default function RecordingDetailPage() {
   };
 
   const handleDownloadSTT = () => {
-    const blob = new Blob([activeText], { type: 'text/plain;charset=utf-8' });
+    const blob = new Blob([sttText], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${recording.program_name}_stt${sttEngine === 'qwen3' ? '_qwen3' : ''}.txt`;
+    link.download = `${recording.program_name}_stt.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -252,28 +238,7 @@ export default function RecordingDetailPage() {
             <CardContent>
               {sttText ? (
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    {qwen3Text ? (
-                      <div className="flex gap-1">
-                        <Button
-                          variant={sttEngine === 'whisper' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setSTTEngine('whisper')}
-                        >
-                          Whisper
-                        </Button>
-                        <Button
-                          variant={sttEngine === 'qwen3' ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setSTTEngine('qwen3')}
-                        >
-                          qwen3
-                        </Button>
-                      </div>
-                    ) : (
-                      <div />
-                    )}
-                    <div className="flex gap-2">
+                  <div className="flex justify-end gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -299,10 +264,9 @@ export default function RecordingDetailPage() {
                       <Download className="w-4 h-4 mr-2" />
                       다운로드 (.txt)
                     </Button>
-                    </div>
                   </div>
                   <STTTranscript
-                    text={activeText}
+                    text={sttText}
                     recordedAt={recording.recorded_at}
                     onSeek={(s) => playerRef.current?.seekTo(s)}
                   />

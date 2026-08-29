@@ -1,5 +1,5 @@
 /**
- * Audio file chunking for Whisper API's 25MB file size limit.
+ * Audio file chunking for STT API's 25MB file size limit.
  * Uses ffmpeg to split large MP3 files into smaller chunks.
  */
 
@@ -47,7 +47,7 @@ export async function getAudioDurationSecs(filePath: string): Promise<number> {
 }
 
 /**
- * Split an audio file into chunks that fit within the Whisper API size limit.
+ * Split an audio file into chunks that fit within the STT API size limit.
  * Uses -codec:a copy for fast splitting without re-encoding.
  */
 export async function splitAudioFile(

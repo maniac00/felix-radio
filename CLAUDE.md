@@ -74,7 +74,7 @@ Vercel (Next.js) ←JWT→ Cloudflare Workers (Hono) ←→ D1 + R2
 - Node.js 20+ on Docker (Vultr VPS), timezone Asia/Seoul
 - Polls `/api/internal/schedules/pending` every 1 minute via node-cron
 - Records HLS streams with ffmpeg → uploads MP3 to R2 → creates DB entry
-- STT: OpenAI Whisper API, uploads text to R2
+- STT: Qwen3 ASR via OpenRouter (`qwen/qwen3-asr-1.7b`, OpenAI-compatible API), uploads text to R2
 - Journal-based state tracking (`{dataDir}/journal.json`): `scheduled → recording → recorded → uploading → uploaded → db_synced → stt_processing → stt_completed`
 - Schedule matching uses configurable time window (default 5 min)
 - `withRetry()` for critical ops, `tryOperation()` for non-blocking ones

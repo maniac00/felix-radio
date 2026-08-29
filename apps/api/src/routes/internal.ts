@@ -316,31 +316,7 @@ internal.put('/recordings/:id/stt', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { stt_status, stt_text_path, stt_qwen3_text_path, error_message } = body;
-
-  // Qwen3-only update: set the secondary engine's path without touching
-  // stt_status/stt_text_path (whisper result must be preserved)
-  if (stt_qwen3_text_path !== undefined && stt_status === undefined) {
-    try {
-      const result = await db
-        .prepare(`
-          UPDATE recordings
-          SET stt_qwen3_text_path = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `)
-        .bind(stt_qwen3_text_path || null, recordingId)
-        .run();
-
-      if (result.meta.changes === 0) {
-        return c.json({ error: 'Recording not found' }, 404);
-      }
-
-      return c.json({ message: 'Qwen3 STT path updated successfully' });
-    } catch (error) {
-      console.error('Error updating Qwen3 STT path:', error);
-      return c.json({ error: 'Failed to update Qwen3 STT path' }, 500);
-    }
-  }
+  const { stt_status, stt_text_path, error_message } = body;
 
   if (!stt_status || !['none', 'processing', 'completed', 'failed'].includes(stt_status)) {
     return c.json({ error: 'stt_status must be one of: none, processing, completed, failed' }, 400);

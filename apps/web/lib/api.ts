@@ -202,10 +202,9 @@ class ApiClient {
   /**
    * Get STT result for a recording
    */
-  async getSTTResult(recordingId: number, engine?: 'whisper' | 'qwen3'): Promise<string> {
-    const query = engine === 'qwen3' ? '?engine=qwen3' : '';
+  async getSTTResult(recordingId: number): Promise<string> {
     const response = await this.fetch<{ stt_status: string; text?: string; message?: string }>(
-      `/api/recordings/${recordingId}/stt${query}`
+      `/api/recordings/${recordingId}/stt`
     );
 
     if (response.stt_status !== 'completed' || !response.text) {

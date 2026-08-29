@@ -18,7 +18,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Felix Radio - Radio Recording & STT Service',
   description:
-    'Automatically record radio broadcasts and convert to text with OpenAI Whisper',
+    'Automatically record radio broadcasts and convert to text with AI',
 };
 
 // Force dynamic rendering to prevent static generation errors with NextAuth

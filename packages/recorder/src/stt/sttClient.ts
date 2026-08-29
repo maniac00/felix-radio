@@ -1,5 +1,6 @@
 /**
- * OpenAI Whisper API client for speech-to-text conversion
+ * STT client for speech-to-text conversion.
+ * Uses Qwen3 ASR via OpenRouter's OpenAI-compatible transcriptions endpoint.
  */
 
 import OpenAI, { APIError } from 'openai';
@@ -9,6 +10,7 @@ import type { Config } from '../types.js';
 import { logger } from '../lib/logger.js';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000; // UTC+9
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 /**
  * Strip leading "(HH:mm:ss) " from a line, returning only the spoken text.
@@ -18,7 +20,7 @@ function stripTimestamp(line: string): string {
 }
 
 /**
- * Collapse runs of consecutive identical lines (Whisper self-loop hallucination
+ * Collapse runs of consecutive identical lines (ASR self-loop hallucination
  * during silence/ad/music). Keeps the first occurrence and inserts a marker.
  */
 export function dedupConsecutiveLines(lines: string[], threshold = 3): string[] {
@@ -31,7 +33,7 @@ export function dedupConsecutiveLines(lines: string[], threshold = 3): string[] 
     const runLen = j - i;
     if (runLen >= threshold) {
       out.push(lines[i]);
-      out.push(`(이전 줄 ${runLen}회 반복 — Whisper hallucination 의심으로 생략)`);
+      out.push(`(이전 줄 ${runLen}회 반복 — hallucination 의심으로 생략)`);
     } else {
       for (let k = i; k < j; k++) out.push(lines[k]);
     }
@@ -86,7 +88,7 @@ function formatKSTTime(recordedAtISO: string, offsetSecs: number): string {
 }
 
 /**
- * Convert OpenAI API errors to user-friendly messages
+ * Convert API errors to user-friendly messages
  */
 function toUserError(error: unknown): Error {
   if (error instanceof APIError) {
@@ -100,40 +102,22 @@ function toUserError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-export interface TranscriptionClientOverrides {
-  apiKey: string;
-  baseURL: string;
-  model: string;
-}
-
-export class WhisperClient {
+export class STTClient {
   private client: OpenAI;
   private model: string;
 
-  constructor(config: Config, overrides?: TranscriptionClientOverrides) {
+  constructor(config: Config) {
     this.client = new OpenAI({
-      apiKey: overrides?.apiKey ?? config.openaiApiKey,
-      ...(overrides?.baseURL ? { baseURL: overrides.baseURL } : {}),
+      apiKey: config.openrouterApiKey,
+      baseURL: OPENROUTER_BASE_URL,
       timeout: 10 * 60 * 1000, // 10 minutes per request
       maxRetries: 0, // We handle retries ourselves via withRetry()
     });
-    this.model = overrides?.model ?? config.transcriptionModel;
+    this.model = config.transcriptionModel;
   }
 
   /**
-   * Secondary STT engine via OpenRouter (Qwen3 ASR). The transcriptions
-   * endpoint is OpenAI-compatible, so the same client code works.
-   */
-  static forQwen3(config: Config): WhisperClient {
-    return new WhisperClient(config, {
-      apiKey: config.openrouterApiKey,
-      baseURL: 'https://openrouter.ai/api/v1',
-      model: config.qwen3Model,
-    });
-  }
-
-  /**
-   * Validate audio file size (Whisper 25MB limit)
+   * Validate audio file size (transcriptions endpoint 25MB limit)
    */
   private async validateFileSize(audioFilePath: string): Promise<number> {
     const fileStats = await stat(audioFilePath);
@@ -141,7 +125,7 @@ export class WhisperClient {
 
     if (fileSizeMB > 25) {
       throw new Error(
-        `File size ${fileSizeMB.toFixed(2)}MB exceeds Whisper API limit of 25MB`
+        `File size ${fileSizeMB.toFixed(2)}MB exceeds STT API limit of 25MB`
       );
     }
 
@@ -154,7 +138,7 @@ export class WhisperClient {
   }
 
   /**
-   * Convert audio file to plain text using Whisper API
+   * Convert audio file to plain text
    */
   async convertToText(audioFilePath: string): Promise<string> {
     logger.info('Converting audio to text', { audioFilePath, model: this.model });
@@ -177,7 +161,7 @@ export class WhisperClient {
 
       return transcription;
     } catch (error) {
-      logger.error('Whisper API failed', { audioFilePath, error });
+      logger.error('STT API failed', { audioFilePath, error });
       throw toUserError(error);
     }
   }
@@ -207,7 +191,7 @@ export class WhisperClient {
 
       return lines;
     } catch (error) {
-      logger.error('Whisper API failed', { audioFilePath, error });
+      logger.error('STT API failed', { audioFilePath, error });
       throw toUserError(error);
     }
   }
@@ -267,7 +251,7 @@ export class WhisperClient {
 
       return lines;
     } catch (error) {
-      logger.error('Whisper chunk transcription failed', {
+      logger.error('STT chunk transcription failed', {
         audioFilePath,
         chunkStartOffsetSecs,
         error,
