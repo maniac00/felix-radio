@@ -37,12 +37,6 @@ export default function SchedulesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<Schedule | undefined>();
 
-  // Load schedules and stations on mount
-  useEffect(() => {
-    loadSchedules();
-    loadStations();
-  }, []);
-
   const loadSchedules = async () => {
     try {
       setIsLoading(true);
@@ -64,6 +58,12 @@ export default function SchedulesPage() {
       console.error('Failed to load stations:', error);
     }
   };
+
+  // Load schedules and stations on mount
+  useEffect(() => {
+    loadSchedules();
+    loadStations();
+  }, []);
 
   const handleCreate = async (data: ScheduleCreateRequest) => {
     try {

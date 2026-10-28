@@ -18,10 +18,6 @@ export default function DashboardPage() {
   const [activeSchedules, setActiveSchedules] = useState<Schedule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    loadDashboardData();
-  }, []);
-
   const loadDashboardData = async () => {
     try {
       setIsLoading(true);
@@ -41,6 +37,10 @@ export default function DashboardPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
 
   // Calculate next scheduled recording
   const getNextSchedule = () => {

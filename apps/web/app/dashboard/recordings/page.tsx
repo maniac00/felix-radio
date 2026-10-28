@@ -27,11 +27,6 @@ export default function RecordingsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
-  // Load recordings on mount
-  useEffect(() => {
-    loadRecordings();
-  }, []);
-
   const loadRecordings = async () => {
     try {
       setIsLoading(true);
@@ -44,6 +39,11 @@ export default function RecordingsPage() {
       setIsLoading(false);
     }
   };
+
+  // Load recordings on mount
+  useEffect(() => {
+    loadRecordings();
+  }, []);
 
   // Filter recordings
   const filteredRecordings = useMemo(() => {

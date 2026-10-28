@@ -39,11 +39,6 @@ export default function RecordingDetailPage() {
   const [copied, setCopied] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string>('');
 
-  useEffect(() => {
-    loadRecording();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordingId]);
-
   const loadRecording = async () => {
     try {
       setIsLoading(true);
@@ -76,6 +71,11 @@ export default function RecordingDetailPage() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recordingId]);
 
   if (isLoading) {
     return (
