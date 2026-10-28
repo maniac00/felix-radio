@@ -81,7 +81,16 @@ export class Journal {
     updates: Partial<
       Pick<
         JournalEntry,
-        'status' | 'recordingId' | 'errorMessage' | 'retryCount' | 'localPath' | 'sttAttempts' | 'sttLastAttemptAt'
+        | 'status'
+        | 'recordingId'
+        | 'errorMessage'
+        | 'retryCount'
+        | 'localPath'
+        | 'sttAttempts'
+        | 'sttLastAttemptAt'
+        | 'actualDurationSecs'
+        | 'recordingAttempts'
+        | 'recordingNote'
       >
     >
   ): Promise<void> {

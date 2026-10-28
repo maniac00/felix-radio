@@ -43,6 +43,7 @@ logger.info('Configuration loaded', {
   dataDir: config.dataDir,
   retentionDays: config.retentionDays,
   scheduleWindowMins: config.scheduleWindowMins,
+  stallTimeoutSecs: config.stallTimeoutSecs,
 });
 
 // Initialize journal
@@ -96,11 +97,11 @@ async function recoverEntry(
         entry.status = 'recorded';
         await processEntry(entry, config, journal);
       } else {
-        logger.warn('Recording interrupted (no file), marking failed', { key: entry.key });
-        await journal.updateEntry(entry.key, {
-          status: 'failed',
-          errorMessage: 'Recording interrupted: process crashed during recording',
-        });
+        // No final file yet: record whatever is left of the window and merge any
+        // part files ffmpeg wrote before the crash. processEntry marks the entry
+        // failed if nothing at all was captured.
+        logger.warn('Recording was interrupted, resuming for the remaining window', { key: entry.key });
+        await processEntry(entry, config, journal);
       }
       break;
     }

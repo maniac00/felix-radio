@@ -140,13 +140,15 @@ export class WorkersAPIClient {
     recordingId: number,
     status: 'pending' | 'recording' | 'completed' | 'failed',
     errorMessage?: string,
-    fileSizeBytes?: number
+    fileSizeBytes?: number,
+    durationSecs?: number
   ): Promise<void> {
     logger.debug('Updating recording status', {
       recordingId,
       status,
       errorMessage,
       fileSizeBytes,
+      durationSecs,
     });
 
     const payload: any = {
@@ -156,6 +158,10 @@ export class WorkersAPIClient {
 
     if (fileSizeBytes !== undefined) {
       payload.file_size_bytes = fileSizeBytes;
+    }
+
+    if (durationSecs !== undefined) {
+      payload.duration_secs = durationSecs;
     }
 
     await this.request(`/api/internal/recordings/${recordingId}/status`, {

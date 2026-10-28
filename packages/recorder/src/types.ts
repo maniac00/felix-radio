@@ -60,4 +60,5 @@ export interface Config {
   retentionDays: number; // Days to keep local audio files after db_synced
   scheduleWindowMins: number; // Minutes before start_time to match schedules
   sttRetryMax: number; // Max STT attempts per recording before giving up
+  stallTimeoutSecs: number; // Kill/restart ffmpeg when no audio arrives for this long
 }

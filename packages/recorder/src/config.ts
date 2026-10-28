@@ -32,6 +32,7 @@ export function loadConfig(): Config {
     retentionDays: parseInt(getEnv('RETENTION_DAYS', false) || '3', 10),
     scheduleWindowMins: parseInt(getEnv('SCHEDULE_WINDOW_MINS', false) || '5', 10),
     sttRetryMax: parseInt(getEnv('STT_RETRY_MAX', false) || '10', 10),
+    stallTimeoutSecs: parseInt(getEnv('STALL_TIMEOUT_SECS', false) || '45', 10),
   };
 }
 
@@ -70,6 +71,11 @@ export function validateConfig(config: Config): void {
 
   if (config.sttRetryMax < 1 || config.sttRetryMax > 50) {
     errors.push('STT_RETRY_MAX must be between 1 and 50');
+  }
+
+  // HLS segments are ~10s apart, so anything under ~20s would restart ffmpeg on normal gaps
+  if (config.stallTimeoutSecs < 20 || config.stallTimeoutSecs > 600) {
+    errors.push('STALL_TIMEOUT_SECS must be between 20 and 600');
   }
 
   if (errors.length > 0) {

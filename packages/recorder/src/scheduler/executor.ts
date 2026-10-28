@@ -9,6 +9,10 @@
  *
  * State machine per journal entry:
  * scheduled -> recording -> recorded -> uploading -> uploaded -> db_synced
+ *
+ * The recording phase is resumable: if the process restarts while an entry is
+ * in `recording`, recordStream() continues for the rest of the wall-clock
+ * window using the entry's createdAt as the window start.
  */
 
 import { mkdir, stat, access } from 'fs/promises';
@@ -72,6 +76,22 @@ export async function tryOperation<T>(
     });
     return defaultValue;
   }
+}
+
+/**
+ * Human-readable note for a recording that is missing audio. Stored in the DB
+ * error_message column and shown in the web UI next to the completed badge.
+ */
+export function buildPartialNote(
+  expectedSecs: number,
+  actualSecs: number,
+  attempts: number,
+  interruptions: string[]
+): string {
+  const expectedMins = Math.round(expectedSecs / 60);
+  const actualMins = Math.round(actualSecs / 60);
+  const detail = interruptions.length > 0 ? ` 중단: ${interruptions.join(', ')}` : '';
+  return `스트림 중단으로 일부 구간 누락: 요청 ${expectedMins}분 중 ${actualMins}분 녹음 (ffmpeg 실행 ${attempts}회).${detail}`;
 }
 
 /**
@@ -150,54 +170,85 @@ export async function processEntry(
   const r2Client = new R2Client(config);
 
   try {
-    // Phase: scheduled -> recording
-    if (entry.status === 'scheduled') {
-      await journal.updateEntry(entry.key, { status: 'recording' });
-      entry.status = 'recording';
+    // Phase: scheduled -> recording (-> recorded). Also re-entered on recovery
+    // while still `recording`, in which case the remaining window is recorded.
+    if (entry.status === 'scheduled' || entry.status === 'recording') {
+      const resuming = entry.status === 'recording';
+      if (!resuming) {
+        await journal.updateEntry(entry.key, { status: 'recording' });
+        entry.status = 'recording';
+      }
 
       // Start recording immediately
-      logger.info('Starting recording', { key: entry.key, localPath: entry.localPath });
+      logger.info(resuming ? 'Resuming recording' : 'Starting recording', {
+        key: entry.key,
+        localPath: entry.localPath,
+      });
 
+      const expectedDurationSecs = entry.schedule.durationMins * 60;
       const recordingPromise = recordStream({
         streamUrl: entry.schedule.streamUrl,
-        durationSecs: entry.schedule.durationMins * 60,
+        durationSecs: expectedDurationSecs,
         outputPath: entry.localPath,
+        startedAt: new Date(entry.createdAt),
+        stallTimeoutSecs: config.stallTimeoutSecs,
       });
 
-      // Try to create DB entry in parallel (non-blocking)
-      const metadata: RecordingMetadata = {
-        user_id: entry.schedule.userId,
-        schedule_id: entry.scheduleId,
-        station_id: entry.schedule.stationId,
-        program_name: entry.schedule.programName,
-        recorded_at: entry.createdAt,
-        duration_secs: entry.schedule.durationMins * 60,
-        file_size_bytes: 0,
-        audio_file_path: entry.r2Key,
-        status: 'recording',
-      };
+      // Try to create DB entry in parallel (non-blocking) unless it already exists
+      let dbPromise: Promise<number | null> = Promise.resolve(entry.recordingId);
+      if (!entry.recordingId) {
+        const metadata: RecordingMetadata = {
+          user_id: entry.schedule.userId,
+          schedule_id: entry.scheduleId,
+          station_id: entry.schedule.stationId,
+          program_name: entry.schedule.programName,
+          recorded_at: entry.createdAt,
+          duration_secs: expectedDurationSecs,
+          file_size_bytes: 0,
+          audio_file_path: entry.r2Key,
+          status: 'recording',
+        };
 
-      const dbPromise = tryOperation(
-        () => apiClient.createRecording(metadata),
-        'DB recording creation',
-        null as number | null
-      ).then(async id => {
-        if (id) {
-          entry.recordingId = id;
-          await journal.updateEntry(entry.key, { recordingId: id });
-          logger.info('DB recording entry created', { key: entry.key, recordingId: id });
-        }
-        return id;
-      });
+        dbPromise = tryOperation(
+          () => apiClient.createRecording(metadata),
+          'DB recording creation',
+          null as number | null
+        ).then(async id => {
+          if (id) {
+            entry.recordingId = id;
+            await journal.updateEntry(entry.key, { recordingId: id });
+            logger.info('DB recording entry created', { key: entry.key, recordingId: id });
+          }
+          return id;
+        });
+      }
 
       // Wait for recording to complete
-      await recordingPromise;
+      const result = await recordingPromise;
       await dbPromise; // Wait for DB attempt too
 
-      await journal.updateEntry(entry.key, { status: 'recorded' });
-      entry.status = 'recorded';
+      const recordingNote = result.partial
+        ? buildPartialNote(result.expectedDurationSecs, result.actualDurationSecs, result.attempts, result.interruptions)
+        : undefined;
 
-      logger.info('Recording completed', { key: entry.key });
+      await journal.updateEntry(entry.key, {
+        status: 'recorded',
+        actualDurationSecs: result.actualDurationSecs,
+        recordingAttempts: result.attempts,
+        recordingNote,
+      });
+      entry.status = 'recorded';
+      entry.actualDurationSecs = result.actualDurationSecs;
+      entry.recordingAttempts = result.attempts;
+      entry.recordingNote = recordingNote;
+
+      logger.info('Recording completed', {
+        key: entry.key,
+        actualDurationSecs: result.actualDurationSecs,
+        expectedDurationSecs: result.expectedDurationSecs,
+        attempts: result.attempts,
+        partial: result.partial,
+      });
     }
 
     // Phase: recorded -> uploading -> uploaded
@@ -226,14 +277,17 @@ export async function processEntry(
     if (entry.status === 'uploaded') {
       const fileStats = await stat(entry.localPath);
 
+      const durationSecs = entry.actualDurationSecs ?? entry.schedule.durationMins * 60;
+
       if (entry.recordingId) {
-        // Update existing DB entry
+        // Update existing DB entry with the real duration and any partial-recording note
         await withRetry(
           () => apiClient.updateRecordingStatus(
             entry.recordingId!,
             'completed',
-            undefined,
-            fileStats.size
+            entry.recordingNote,
+            fileStats.size,
+            durationSecs
           ),
           'DB status update'
         );
@@ -245,10 +299,11 @@ export async function processEntry(
           station_id: entry.schedule.stationId,
           program_name: entry.schedule.programName,
           recorded_at: entry.createdAt,
-          duration_secs: entry.schedule.durationMins * 60,
+          duration_secs: durationSecs,
           file_size_bytes: fileStats.size,
           audio_file_path: entry.r2Key,
           status: 'completed',
+          error_message: entry.recordingNote,
         };
 
         const newId = await withRetry(

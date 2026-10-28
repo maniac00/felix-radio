@@ -157,11 +157,15 @@ export default function DashboardPage() {
                   </p>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Badge
-                    variant={recording.status === 'completed' ? 'default' : 'secondary'}
-                  >
-                    {recording.status === 'completed' ? '완료' : recording.status === 'failed' ? '실패' : '진행중'}
-                  </Badge>
+                  {recording.status === 'completed' && recording.error_message ? (
+                    <Badge className="bg-amber-500">부분 완료</Badge>
+                  ) : (
+                    <Badge
+                      variant={recording.status === 'completed' ? 'default' : 'secondary'}
+                    >
+                      {recording.status === 'completed' ? '완료' : recording.status === 'failed' ? '실패' : '진행중'}
+                    </Badge>
+                  )}
                   {recording.stt_status === 'completed' && (
                     <Badge variant="outline" className="border-green-500 text-green-700">
                       STT 완료

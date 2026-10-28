@@ -41,10 +41,17 @@ export function RecordingCard({ recording, onDownload, onDelete }: RecordingCard
       setIsDeleting(false);
     }
   };
+  // A completed recording with a note means audio is missing (stream interruption)
+  const isPartial = recording.status === 'completed' && !!recording.error_message;
+
   const getStatusBadge = () => {
     switch (recording.status) {
       case 'completed':
-        return <Badge className="bg-green-500">완료</Badge>;
+        return isPartial ? (
+          <Badge className="bg-amber-500">부분 완료</Badge>
+        ) : (
+          <Badge className="bg-green-500">완료</Badge>
+        );
       case 'recording':
         return <Badge className="bg-blue-500">녹음중</Badge>;
       case 'failed':
@@ -108,7 +115,7 @@ export function RecordingCard({ recording, onDownload, onDelete }: RecordingCard
                 길이: {formatDuration(recording.duration_secs)} • 파일 크기: {formatFileSize(recording.file_size_bytes)}
               </p>
               {recording.error_message && (
-                <p className="text-red-600 flex items-center mt-2">
+                <p className={`${isPartial ? 'text-amber-700' : 'text-red-600'} flex items-center mt-2`}>
                   <AlertCircle className="w-4 h-4 mr-2" />
                   {recording.error_message}
                 </p>

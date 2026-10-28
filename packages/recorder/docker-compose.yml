@@ -13,6 +13,7 @@ services:
       - DATA_DIR=/data/felix-recordings
       - RETENTION_DAYS=3
       - SCHEDULE_WINDOW_MINS=5
+      - STALL_TIMEOUT_SECS=45
     volumes:
       - recorder-data:/data/felix-recordings
     logging:

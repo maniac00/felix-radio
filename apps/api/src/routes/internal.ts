@@ -246,20 +246,30 @@ internal.put('/recordings/:id/status', async (c) => {
     return c.json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { status, file_size_bytes, error_message } = body;
+  const { status, file_size_bytes, error_message, duration_secs } = body;
 
   if (!status || !['pending', 'recording', 'completed', 'failed'].includes(status)) {
     return c.json({ error: 'status must be one of: pending, recording, completed, failed' }, 400);
   }
 
+  if (duration_secs !== undefined && (typeof duration_secs !== 'number' || duration_secs < 0)) {
+    return c.json({ error: 'duration_secs must be a non-negative number' }, 400);
+  }
+
   try {
-    // Build dynamic update query to include file_size_bytes if provided
+    // Build dynamic update query to include file_size_bytes / duration_secs if provided
     const updates: string[] = ['status = ?', 'updated_at = CURRENT_TIMESTAMP'];
     const params: any[] = [status];
 
     if (file_size_bytes !== undefined && typeof file_size_bytes === 'number') {
       updates.push('file_size_bytes = ?');
       params.push(file_size_bytes);
+    }
+
+    // Recorder reports the real captured length once recording finishes
+    if (duration_secs !== undefined) {
+      updates.push('duration_secs = ?');
+      params.push(Math.round(duration_secs));
     }
 
     if (error_message !== undefined) {

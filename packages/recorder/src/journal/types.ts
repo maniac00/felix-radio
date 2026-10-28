@@ -40,6 +40,12 @@ export interface JournalEntry {
   errorMessage?: string;
   /** Retry count for current phase */
   retryCount: number;
+  /** Seconds of audio actually captured (set when recording finishes) */
+  actualDurationSecs?: number;
+  /** Number of ffmpeg launches used for this recording */
+  recordingAttempts?: number;
+  /** Set when audio is missing (stream interruptions); stored as DB error_message */
+  recordingNote?: string;
   /** Number of failed STT attempts (drives retry backoff) */
   sttAttempts?: number;
   /** ISO 8601 timestamp of the last STT attempt */

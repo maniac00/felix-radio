@@ -299,7 +299,10 @@ export default function RecordingDetailPage() {
             <CardContent className="space-y-3">
               <div>
                 <p className="text-sm text-gray-600 mb-1">녹음 상태</p>
-                {recording.status === 'completed' && (
+                {recording.status === 'completed' && recording.error_message && (
+                  <Badge className="bg-amber-500">부분 완료</Badge>
+                )}
+                {recording.status === 'completed' && !recording.error_message && (
                   <Badge className="bg-green-500">완료</Badge>
                 )}
                 {recording.status === 'failed' && (
@@ -367,7 +370,21 @@ export default function RecordingDetailPage() {
           </Card>
 
           {/* Error Info */}
-          {recording.error_message && (
+          {recording.error_message && recording.status === 'completed' && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-base text-amber-900">
+                  녹음 안내
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-amber-800">
+                  {recording.error_message}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+          {recording.error_message && recording.status !== 'completed' && (
             <Card className="border-red-200 bg-red-50">
               <CardHeader>
                 <CardTitle className="text-base text-red-900">

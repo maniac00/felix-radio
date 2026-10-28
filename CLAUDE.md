@@ -77,6 +77,7 @@ Vercel (Next.js) ←JWT→ Cloudflare Workers (Hono) ←→ D1 + R2
 - STT: Qwen3 ASR via OpenRouter (`qwen/qwen3-asr-1.7b`, OpenAI-compatible API), uploads text to R2
 - Journal-based state tracking (`{dataDir}/journal.json`): `scheduled → recording → recorded → uploading → uploaded → db_synced → stt_processing → stt_completed`
 - Schedule matching uses configurable time window (default 5 min)
+- Recording is a wall-clock window: ffmpeg is relaunched if it exits early, a stall watchdog kills it after `STALL_TIMEOUT_SECS` (default 45) without new audio, part files are concatenated at the end, and the real captured duration is reported (`duration_secs`) with a note in `error_message` when audio is missing (web shows "부분 완료")
 - `withRetry()` for critical ops, `tryOperation()` for non-blocking ones
 - R2 paths: `users/{user_id}/recordings/{filename}.mp3`
 
